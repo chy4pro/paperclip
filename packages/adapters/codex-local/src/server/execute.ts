@@ -338,7 +338,11 @@ async function probeSandboxCodexAuthJson(input: {
   target: MaybeResolvedExecutionTarget;
   cwd: string;
 }): Promise<SandboxCodexAuthProbeResult> {
-  if (!input.target || input.target.kind !== "remote" || input.target.transport !== "sandbox") {
+  if (
+    !input.target ||
+    input.target.kind !== "remote" ||
+    (input.target.transport !== "sandbox" && input.target.transport !== "ssh")
+  ) {
     return "absent";
   }
 
@@ -399,7 +403,8 @@ export async function assertCodexCredentialsLaunchable(input: {
   if (!credentialReadiness.managed || credentialReadiness.ready) return;
 
   const targetIsSandbox =
-    input.target?.kind === "remote" && input.target.transport === "sandbox";
+    input.target?.kind === "remote" &&
+    (input.target.transport === "sandbox" || input.target.transport === "ssh");
   if (targetIsSandbox) {
     const sandboxAuthJson = await probeSandboxCodexAuthJson({
       runId: input.runId,
