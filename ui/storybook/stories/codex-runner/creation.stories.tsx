@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, within, waitFor } from "storybook/test";
 import { NewAgent } from "@/pages/NewAgent";
+import { AgentBasicsDialog } from "@/components/new-agent/AgentBasicsDialog";
 import { models } from "@paperclipai/adapter-codex-local";
 import { storybookHiredAgent } from "../../fixtures/paperclipData";
 import { resetOnboardingFixtureState, setOnboardingFixtureState } from "../../fixtures/onboardingEnvironment";
 
 /** Real creation screen; existing Storybook API fixtures provide isolated accounts. */
-function installCodexCreationFixture({ setupFailure = false }: { setupFailure?: boolean } = {}) {
+function installCodexCreationFixture({ setupFailure = false, nativeRunnerEnabled = false }: { setupFailure?: boolean; nativeRunnerEnabled?: boolean } = {}) {
   resetOnboardingFixtureState();
   setOnboardingFixtureState({ environments: "local", authSignal: "present", localLoginStatus: "ready", savedManagedSubscription: "openai" });
   const previous = window.fetch;
@@ -16,7 +17,11 @@ function installCodexCreationFixture({ setupFailure = false }: { setupFailure?: 
     const body = () => JSON.parse(typeof init?.body === "string" ? init.body : "{}");
     if (url.pathname === "/api/instance/settings/experimental") {
       const response = await previous(input, init);
-      return Response.json({ ...await response.json(), enableNativeRunner: false });
+      return Response.json({ ...await response.json(), enableNativeRunner: nativeRunnerEnabled });
+    }
+    if (nativeRunnerEnabled && url.pathname === "/api/adapters") {
+      const response = await previous(input, init);
+      return Response.json([...await response.json(), { type: "paperclip_runner", label: "Paperclip Runner", source: "builtin", loaded: true, disabled: false, modelsCount: 0 }]);
     }
     if (url.pathname.endsWith("/adapters/codex_local/models")) return Response.json(models);
     if (url.pathname.endsWith("/adapters/codex_local/test-environment")) {
@@ -76,5 +81,21 @@ export const TaskReady: Story = {
     const canvas = within(context.canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Finish setup" }));
     await expect(await canvas.findByRole("heading", { name: /is ready/ })).toBeVisible();
+  },
+};
+export const ExperimentalNativeHarnesses: Story = {
+  parameters: { codexCreationFixture: { nativeRunnerEnabled: true } },
+  render: () => <AgentBasicsDialog open onClose={() => {}} onContinue={() => {}} />,
+  play: async () => {
+    const dialog = within(document.body);
+    await userEvent.type(await dialog.findByRole("textbox", { name: "Agent name" }), "Nova");
+    await userEvent.click(await dialog.findByRole("button", { name: "Choose adapter" }));
+    await userEvent.click(await dialog.findByText("Advanced", { exact: true, selector: "summary" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Experimental harness" }));
+    await expect(await dialog.findByRole("option", { name: "Grok Build (Paperclip Runner)" })).toBeVisible();
+    await expect(await dialog.findByRole("option", { name: "OpenCode (Paperclip Runner)" })).toBeVisible();
+    await userEvent.click(await dialog.findByRole("option", { name: "Claude Code (Paperclip Runner)" }));
+    await expect(await dialog.findByRole("button", { name: "Experimental harness" })).toHaveTextContent("Claude Code");
+    await expect(await dialog.findByRole("button", { name: "Configure agent" })).toBeEnabled();
   },
 };

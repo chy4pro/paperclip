@@ -86,7 +86,8 @@ async function renderStory(page: Page, storyId: string, theme: (typeof THEMES)[n
       const preview = (window as unknown as { __STORYBOOK_PREVIEW__?: { storyRenders?: Array<{ id: string; phase: string }> } }).__STORYBOOK_PREVIEW__;
       return preview?.storyRenders?.some(render => render.id === id && render.phase === "finished");
     }, storyId);
-    const expected = storyId.endsWith("--task-ready") ? page.getByRole("heading", { name: /is ready/ })
+    const expected = storyId.endsWith("--experimental-native-harnesses") ? page.getByRole("button", { name: "Experimental harness", exact: true })
+      : storyId.endsWith("--task-ready") ? page.getByRole("heading", { name: /is ready/ })
       : page.getByRole("button", { name: codexCreation || storyId.endsWith("--codex-legacy-advanced") ? "Runner" : "Harness", exact: true });
     await expect(expected).toBeVisible();
   }

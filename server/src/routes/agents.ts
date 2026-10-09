@@ -4706,6 +4706,16 @@ export function agentRoutes(
       ...hireInput
     } = req.body;
 
+    // Check actor restrictions on the requested harness before runner translation
+    // changes its identity or reads the selected execution target.
+    const hiredAgentId = randomUUID();
+    const requestedHireConfig = (hireInput.adapterConfig ?? {}) as Record<string, unknown>;
+    assertProviderTraceSettingTransition(req, hireInput.runtimeConfig);
+    assertNoAgentAdapterConfigMutation(req, requestedHireConfig);
+    assertNoAgentLocalAdapterHostCommandMutation(req, hireInput.adapterType ?? "process", requestedHireConfig, await callerUsesAiConnectionPool(req, companyId));
+    assertNoAgentProcessAdapterMutation(req, hireInput.adapterType ?? "process", Object.keys(requestedHireConfig).length > 0);
+    assertExternalInstructionsAdmin(req, { id: hiredAgentId, companyId, name: hireInput.name, adapterConfig: requestedHireConfig });
+
     if (inheritRuntimeFrom === "caller") {
       if (req.actor.type !== "agent" || !req.actor.agentId) {
         throw forbidden("Only an agent can inherit native runtime settings from the caller");
@@ -4745,7 +4755,6 @@ export function agentRoutes(
     assertNoAgentAdapterConfigMutation(req, rawHireAdapterConfig);
     assertNoAgentLocalAdapterHostCommandMutation(req, hireInput.adapterType, rawHireAdapterConfig, await callerUsesAiConnectionPool(req, companyId));
     assertNoAgentProcessAdapterMutation(req, hireInput.adapterType, Object.keys(rawHireAdapterConfig).length > 0);
-    const hiredAgentId = randomUUID();
     const authInheritance = await applyHiringAgentAuthInheritance(
       req,
       companyId,
@@ -5045,6 +5054,14 @@ export function agentRoutes(
       runner: createRunner,
       ...createInput
     } = req.body;
+    // Preserve the requested harness's actor restrictions before translation.
+    const agentId = randomUUID();
+    const requestedCreateConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
+    assertProviderTraceSettingTransition(req, createInput.runtimeConfig);
+    assertNoAgentAdapterConfigMutation(req, requestedCreateConfig);
+    assertNoAgentLocalAdapterHostCommandMutation(req, createInput.adapterType ?? "process", requestedCreateConfig, await callerUsesAiConnectionPool(req, companyId));
+    assertNoAgentProcessAdapterMutation(req, createInput.adapterType ?? "process", Object.keys(requestedCreateConfig).length > 0);
+    assertExternalInstructionsAdmin(req, { id: agentId, companyId, name: createInput.name, adapterConfig: requestedCreateConfig });
     Object.assign(createInput, await resolveNewAgentRunnerForCompany(db, companyId, { ...createInput, runner: createRunner }));
     createInput.adapterType = await assertSelectableAdapterType(createInput.adapterType, createInput.adapterConfig);
     const rawCreateAdapterConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
@@ -5061,7 +5078,6 @@ export function agentRoutes(
     assertNoAgentAdapterConfigMutation(req, rawCreateAdapterConfig);
     assertNoAgentLocalAdapterHostCommandMutation(req, createInput.adapterType, rawCreateAdapterConfig, await callerUsesAiConnectionPool(req, companyId));
     assertNoAgentProcessAdapterMutation(req, createInput.adapterType, Object.keys(rawCreateAdapterConfig).length > 0);
-    const agentId = randomUUID();
     const requestedAdapterConfig = applyCodexLocalKeyIsolation(
       companyId,
       agentId,

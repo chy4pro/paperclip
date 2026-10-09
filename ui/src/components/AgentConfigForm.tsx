@@ -1631,6 +1631,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 value={isDotRunner ? "openai_dot" : isCodexHarness ? harnessType : adapterType}
                 disabledTypes={adapterPickerDisabledTypes}
                 openAiDotEnabled={experimentalSettings?.enableOpenAiDot === true}
+                nativeRunnerEnabled={experimentalSettings?.enableNativeRunner === true}
                 onChange={(choice) => {
                   const dot = choice === "openai_dot";
                   const t = dot ? "paperclip_runner" : choice;
@@ -3699,18 +3700,21 @@ export function AdapterTypeDropdown({
   onChange,
   disabledTypes,
   openAiDotEnabled = false,
+  nativeRunnerEnabled = false,
 }: {
   value: string;
   onChange: (type: string) => void;
   disabledTypes: Set<string>;
   openAiDotEnabled?: boolean;
+  nativeRunnerEnabled?: boolean;
 }) {
   const selectedDisplay = getAdapterDisplay(value);
   const adapterList = useMemo(() =>
     [...listAdapterOptions(type => adapterLabels[type] ?? getAdapterLabel(type)),
       ...(openAiDotEnabled ? [{ value: "openai_dot", label: "OpenAI Dot", experimental: true, comingSoon: false }] : []),
-    ].filter(item => item.value !== "paperclip_runner" && !disabledTypes.has(item.value)),
-    [disabledTypes, openAiDotEnabled]);
+    ].filter(item => (item.value !== "paperclip_runner" || nativeRunnerEnabled) && !disabledTypes.has(item.value))
+      .sort((a, b) => Number(a.value === "paperclip_runner") - Number(b.value === "paperclip_runner")),
+    [disabledTypes, openAiDotEnabled, nativeRunnerEnabled]);
   return <SelectPopover aria-label="Harness" value={value} onValueChange={onChange}
     displayValue={<span className="inline-flex min-w-0 items-center gap-1.5">
       <span aria-hidden="true" className="inline-flex shrink-0"><AdapterMark type={value} className="size-4" /></span>
@@ -3718,6 +3722,7 @@ export function AdapterTypeDropdown({
       {selectedDisplay.experimental && <ExperimentalBadge />}
     </span>}
     options={adapterList.map(item => ({ value: item.value, disabled: item.comingSoon,
+      group: item.value === "paperclip_runner" ? "Advanced" : undefined,
       label: <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="inline-flex shrink-0"><AdapterMark type={item.value} className="size-4" /></span><span>{item.label}</span>{item.experimental && <ExperimentalBadge />}</span>,
       suffix: item.comingSoon ? <span className="text-(length:--text-nano) text-muted-foreground">Coming soon</span> : undefined,
     }))} />;

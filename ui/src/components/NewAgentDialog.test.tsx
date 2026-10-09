@@ -107,6 +107,25 @@ it("offers one Codex harness without a runner/provider tile", async () => {
   expect(document.querySelectorAll('input[value="codex_local"]')).toHaveLength(1);
   expect(document.querySelector("select")).toBeNull();
 });
+it.each(["claude", "grok", "opencode"])("preserves explicit experimental %s creation in Advanced", async provider => {
+  await name();
+  await act(async () => (document.querySelector("summary") as HTMLElement).click());
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Experimental harness"]')!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>(`[role="option"][data-value="${provider}"]`)!.click());
+  await click("Configure agent");
+  const query = new URL(state.navigate.mock.calls[0][0], "http://local").searchParams;
+  expect(query.get("adapterType")).toBe("paperclip_runner");
+  expect(query.get("runnerProvider")).toBe(provider);
+});
+it.each(["gate off", "disabled adapter"])("hides experimental native creation when %s", async reason => {
+  await act(async () => {
+    if (reason === "gate off") cache.setQueryData(queryKeys.instance.experimentalSettings, { enableNativeRunner: false });
+    else cache.setQueryData(queryKeys.adapters.all, state.adapters.map((entry: any) => entry.type === "paperclip_runner" ? { ...entry, disabled: true } : entry));
+  });
+  await name();
+  expect(document.querySelector('[aria-label="Experimental harness"]')).toBeNull();
+  expect(document.querySelectorAll('input[value="codex_local"]')).toHaveLength(1);
+});
 
 it("moves Dot out of the harness picker into experimental external invitations", async () => {
   await act(async () => cache.setQueryData(queryKeys.instance.experimentalSettings, { enableNativeRunner: false, enableOpenAiDot: true, enablePublicMcp: true }));

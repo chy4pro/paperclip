@@ -50,7 +50,7 @@ export function resolveNewAgentRunner(input: AgentRunnerSelection): { adapterTyp
     if (config.codexPermissionMode !== undefined && config.codexPermissionMode !== "never") incompatible(["codexPermissionMode"]);
     if (config.lifecycleMode !== undefined && config.lifecycleMode !== "per_turn") incompatible(["lifecycleMode"]);
     for (const key of ["provider", "codexPermissionMode", "opencodePermissionMode", "acpxPermissionMode", "lifecycleMode", "idleTimeoutMs"]) delete config[key];
-    return { adapterType: "codex_local", adapterConfig: { ...config, dangerouslyBypassApprovalsAndSandbox: true } };
+    return { adapterType: "codex_local", adapterConfig: { ...config, dangerouslyBypassApprovalsAndSandbox: config.dangerouslyBypassApprovalsAndSandbox ?? true } };
   }
   if (native && harness !== "codex_local" && choice === "paperclip") return { adapterType, adapterConfig: normalizeLegacyRunnerProvider(config) };
   if (availability.defaultRunner !== "paperclip") throw unprocessable("Paperclip Runner is unavailable for this harness and environment. Select Legacy runner in Advanced.", { code: "agent_runner_unavailable" });

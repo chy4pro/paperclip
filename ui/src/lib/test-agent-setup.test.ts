@@ -1,5 +1,8 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testAgentSetup } from "./test-agent-setup";
+import { adaptersApi } from "../api/adapters";
+import { api } from "../api/client";
+import { queryKeys } from "./queryKeys";
 const testEnvironment = vi.hoisted(() => vi.fn());
 vi.mock("../api/agents", () => ({ agentsApi: { testEnvironment } }));
 const input = {
@@ -27,6 +30,7 @@ const ready = {
   checks: [{ code: "runtime", level: "info", message: "Ready" }],
 };
 beforeEach(() => testEnvironment.mockReset());
+afterEach(() => vi.restoreAllMocks());
 it("does not launch an ambient provider hello test for a pool preview", async () => {
   testEnvironment.mockResolvedValue({ ...ready, status: "warn", checks: [{ code: "ai_connection_pool_task_test_required", level: "warn", message: "Run a task" }] });
   await testAgentSetup({ ...input, aiConnection: { mode: "router", connectionId: "pool-id" } });
@@ -106,4 +110,22 @@ it("keeps the resolved native identity and explicitly bounds the supplementary C
   expect(result.adapterType).toBe("paperclip_runner");
   expect(testEnvironment.mock.calls[0][2].runner).toBe("paperclip");
   expect(testEnvironment.mock.calls[1][2].runner).toBe("legacy");
+});
+
+describe("adapter availability discovery", () => {
+  it("keeps inventory unscoped and sends the selected company and target", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue([]);
+    await adaptersApi.list();
+    await adaptersApi.list({ companyId: "company-1", environmentId: "linux ssh" });
+    await adaptersApi.list({ companyId: "company-2", environmentId: null });
+    expect(get.mock.calls.map(([path]) => path)).toEqual([
+      "/adapters", "/adapters?companyId=company-1&environmentId=linux+ssh", "/adapters?companyId=company-2",
+    ]);
+  });
+  it("isolates target availability from inventory, other targets, and other companies", () => {
+    const selected = queryKeys.adapters.availability("company-1", "linux");
+    expect(selected).not.toEqual(queryKeys.adapters.all);
+    expect(selected).not.toEqual(queryKeys.adapters.availability("company-1", "mac"));
+    expect(selected).not.toEqual(queryKeys.adapters.availability("company-2", "linux"));
+  });
 });

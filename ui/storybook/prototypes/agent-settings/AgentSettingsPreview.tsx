@@ -77,9 +77,13 @@ export function AgentSettingsPreview({
   /** Storybook-only extension point for reviewing proposed runtime controls in the existing page. */
   runtimeContent?: ReactNode;
 }) {
-  const [fixtures] = useState(() =>
-    createSettingsFixtures(adapterType, testOutcome, saveFails),
-  );
+  const [fixtures] = useState(() => {
+    const fixtures = createSettingsFixtures(adapterType, testOutcome, saveFails);
+    if (adapterType === "codex_local" || adapterType === "paperclip_runner") {
+      fixtures.agent.adapterConfig = { ...fixtures.agent.adapterConfig, model: "gpt-5.6-sol", modelReasoningEffort: "high", ...(adapterType === "paperclip_runner" ? { provider: "codex" } : {}) };
+    }
+    return fixtures;
+  });
   const [ready, setReady] = useState(false);
   const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const navigate = useNavigate();

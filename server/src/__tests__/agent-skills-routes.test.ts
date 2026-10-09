@@ -50,6 +50,7 @@ const mockCompanySkillService = vi.hoisted(() => ({
 }));
 
 const mockInstanceSettingsService = vi.hoisted(() => ({
+  get: vi.fn(),
   getExperimental: vi.fn(),
 }));
 
@@ -279,6 +280,7 @@ describe("agent skill routes", () => {
       agent: makeAgent("claude_local"),
     });
     mockSecretService.resolveAdapterConfigForRuntime.mockResolvedValue({ config: { env: {} } });
+    mockInstanceSettingsService.get.mockResolvedValue({ defaultEnvironmentId: null, experimental: {}, general: {} });
     mockInstanceSettingsService.getExperimental.mockResolvedValue({ enableBetaSkills: false });
     mockSecretService.syncEnvBindingsForTarget.mockResolvedValue(undefined);
     mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([
@@ -1005,7 +1007,7 @@ describe("agent skill routes", () => {
           }),
         }),
       }),
-      { createdByUserId: "local-board", claudeLogin: { storedSessionId: null, ownerUserId: "local-board", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "local-board", claudeLogin: { storedSessionId: null, ownerUserId: "local-board", applyExistingWithoutClaim: false } },
     );
     expect(mockTrackAgentCreated).toHaveBeenCalledWith(
       expect.anything(),
@@ -1055,7 +1057,7 @@ describe("agent skill routes", () => {
       expect.objectContaining({
         role: "security",
       }),
-      { createdByUserId: "local-board", claudeLogin: { storedSessionId: null, ownerUserId: "local-board", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "local-board", claudeLogin: { storedSessionId: null, ownerUserId: "local-board", applyExistingWithoutClaim: false } },
     );
     expect(mockTrackAgentCreated).toHaveBeenCalledWith(
       expect.anything(),
@@ -1491,6 +1493,8 @@ describe("agent skill routes", () => {
         }),
       }),
       {
+        runnerResolved: true,
+        aiConnectionInstall: undefined,
         createdByUserId: "local-board",
         claudeLogin: {
           storedSessionId: null,

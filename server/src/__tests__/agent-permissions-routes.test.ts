@@ -117,13 +117,22 @@ const mockSyncInstructionsBundleConfigFromFilePath = vi.hoisted(() => vi.fn());
 const mockEnsureOpenCodeModelConfiguredAndAvailable = vi.hoisted(() => vi.fn());
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
+  listBoundCompanyIds: vi.fn(),
 }));
 
 const mockInstanceSettingsService = vi.hoisted(() => ({
+  get: vi.fn(),
   getGeneral: vi.fn(),
+  getExperimental: vi.fn(),
 }));
 
+const mockRunSshCommand = vi.hoisted(() => vi.fn());
+
 function registerModuleMocks() {
+  vi.doMock("@paperclipai/adapter-utils/ssh", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@paperclipai/adapter-utils/ssh")>()),
+    runSshCommand: mockRunSshCommand,
+  }));
   vi.doMock("@paperclipai/adapter-opencode-local/server", async () => {
     const actual = await vi.importActual<typeof import("@paperclipai/adapter-opencode-local/server")>("@paperclipai/adapter-opencode-local/server");
     return {
@@ -336,7 +345,11 @@ describe("agent permission routes", () => {
     mockTrackAgentCreated.mockReset();
     mockGetTelemetryClient.mockReset();
     mockSyncInstructionsBundleConfigFromFilePath.mockReset();
+    mockInstanceSettingsService.get.mockReset().mockResolvedValue({ defaultEnvironmentId: null, experimental: {}, general: {} });
+    mockInstanceSettingsService.getExperimental.mockReset().mockResolvedValue({});
     mockInstanceSettingsService.getGeneral.mockReset();
+    mockEnvironmentService.listBoundCompanyIds.mockReset().mockResolvedValue([]);
+    mockRunSshCommand.mockReset().mockResolvedValue({ stdout: "Linux\nx86_64\n", stderr: "", code: 0 });
     mockEnvironmentService.getById.mockReset();
     mockEnsureOpenCodeModelConfiguredAndAvailable.mockReset();
     mockSyncInstructionsBundleConfigFromFilePath.mockImplementation((_agent, config) => config);
@@ -1195,6 +1208,9 @@ describe("agent permission routes", () => {
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("instructions path or bundle configuration");
+    expect(mockInstanceSettingsService.get).not.toHaveBeenCalled();
+    expect(mockEnvironmentService.getById).not.toHaveBeenCalled();
+    expect(mockRunSshCommand).not.toHaveBeenCalled();
     expect(mockAgentService.create).not.toHaveBeenCalled();
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
@@ -1225,6 +1241,36 @@ describe("agent permission routes", () => {
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
+  it.each(["agents", "agent-hires"])("rejects agent-supplied Codex host commands before resolving the runner via %s", async (route) => {
+    mockAccessService.hasPermission.mockResolvedValue(true);
+    mockInstanceSettingsService.get.mockRejectedValue(new Error("Denied requests must not inspect execution targets"));
+    const app = createApp({ type: "agent", agentId, companyId, source: "agent_key" });
+    const res = await requestApp(app, (baseUrl) => request(baseUrl)
+      .post(`/api/companies/${companyId}/${route}`)
+      .send({ name: "Injected", role: "engineer", adapterType: "codex_local", adapterConfig: { command: "untrusted-codex" } }));
+
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(res.body.error).toContain("host-executed local adapter settings");
+    expect(mockInstanceSettingsService.get).not.toHaveBeenCalled();
+    expect(mockEnvironmentService.getById).not.toHaveBeenCalled();
+    expect(mockRunSshCommand).not.toHaveBeenCalled();
+    expect(mockAgentService.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["agents", "agent-hires"])("requires instance admin for external instructions before resolving the runner via %s", async (route) => {
+    mockInstanceSettingsService.get.mockRejectedValue(new Error("Denied requests must not inspect execution targets"));
+    const app = createApp({ type: "board", userId: "member-user", source: "session", companyIds: [companyId], isInstanceAdmin: false });
+    const res = await requestApp(app, (baseUrl) => request(baseUrl)
+      .post(`/api/companies/${companyId}/${route}`)
+      .send({ name: "External", role: "engineer", adapterType: "codex_local", adapterConfig: { instructionsBundleMode: "external" } }));
+
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(mockInstanceSettingsService.get).not.toHaveBeenCalled();
+    expect(mockEnvironmentService.getById).not.toHaveBeenCalled();
+    expect(mockRunSshCommand).not.toHaveBeenCalled();
+    expect(mockAgentService.create).not.toHaveBeenCalled();
+  });
+
   it("allows direct agent creation for authenticated board users with agent create permission when approval is not required", async () => {
     mockAccessService.canUser.mockResolvedValue(true);
 
@@ -1251,7 +1297,7 @@ describe("agent permission routes", () => {
       expect.objectContaining({
         status: "idle",
       }),
-      { createdByUserId: "agent-admin-user", claudeLogin: { storedSessionId: null, ownerUserId: "agent-admin-user", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "agent-admin-user", claudeLogin: { storedSessionId: null, ownerUserId: "agent-admin-user", applyExistingWithoutClaim: false } },
     );
     expect(mockAccessService.setPrincipalPermission).toHaveBeenCalledWith(
       companyId,
@@ -1381,7 +1427,7 @@ describe("agent permission routes", () => {
           },
         },
       }),
-      { createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
     );
   });
 
@@ -1417,7 +1463,7 @@ describe("agent permission routes", () => {
           model: DEFAULT_OPENCODE_LOCAL_MODEL,
         }),
       }),
-      { createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
     );
   });
 
@@ -1455,7 +1501,7 @@ describe("agent permission routes", () => {
           model: "anthropic/claude-sonnet-4-5",
         }),
       }),
-      { createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
     );
   });
 
@@ -1495,6 +1541,8 @@ describe("agent permission routes", () => {
         },
       }),
       {
+        runnerResolved: true,
+        aiConnectionInstall: undefined,
         createdByUserId: "board-user",
         claudeLogin: {
           storedSessionId: null,
@@ -1726,7 +1774,7 @@ describe("agent permission routes", () => {
       expect.objectContaining({
         defaultEnvironmentId: environmentId,
       }),
-      { createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
+      { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
     );
   });
 
@@ -1773,17 +1821,18 @@ describe("agent permission routes", () => {
 
   for (const adapterCase of sshCapableAdapterCases) {
     it(`allows creating a ${adapterCase.adapterType} agent with an SSH default environment`, async () => {
+      const expectedAdapterType = adapterCase.adapterType === "codex_local" ? "paperclip_runner" : adapterCase.adapterType;
       const environmentId = "33333333-3333-4333-8333-333333333333";
       mockEnvironmentService.getById.mockResolvedValue({
         id: environmentId,
         companyId,
         driver: "ssh",
-        config: {},
+        config: { host: "qa.example.invalid", username: "qa", remoteWorkspacePath: "/workspace" },
       });
       mockAgentService.create.mockResolvedValue({
         ...baseAgent,
         name: adapterCase.name,
-        adapterType: adapterCase.adapterType,
+        adapterType: expectedAdapterType,
         defaultEnvironmentId: environmentId,
       });
 
@@ -1809,11 +1858,17 @@ describe("agent permission routes", () => {
       expect(mockAgentService.create).toHaveBeenCalledWith(
         companyId,
         expect.objectContaining({
-          adapterType: adapterCase.adapterType,
+          adapterType: expectedAdapterType,
           defaultEnvironmentId: environmentId,
         }),
-        { createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
+        { runnerResolved: true, aiConnectionInstall: undefined, createdByUserId: "board-user", claudeLogin: { storedSessionId: null, ownerUserId: "board-user", applyExistingWithoutClaim: false } },
       );
+      if (adapterCase.adapterType === "codex_local") {
+        expect(mockAgentService.create.mock.calls[0][1].adapterConfig).toMatchObject({ provider: "codex" });
+        expect(mockRunSshCommand).toHaveBeenCalledWith(expect.objectContaining({ host: "qa.example.invalid" }), "uname -s; uname -m", { timeoutMs: 10_000 });
+      } else {
+        expect(mockRunSshCommand).not.toHaveBeenCalled();
+      }
     });
   }
 

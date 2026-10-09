@@ -680,6 +680,35 @@ describe("AgentConfigForm environment selector", () => {
     expect(result.onSave).toHaveBeenCalledWith({ runner: "legacy" });
   });
 
+  it.each([false, true])("keeps experimental native selection gated when enableNativeRunner is %s", async enabled => {
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableNativeRunner: enabled });
+    const result = await renderForm([], { adapterType: "claude_local", adapterConfig: { model: "claude-sonnet-5" } }, { showAdapterTypeField: true });
+    roots.push(result.root);
+    await clickElement(result.container.querySelector('[aria-label="Harness"]'));
+    const option = [...document.querySelectorAll('[role="option"]')].find(element => element.getAttribute("data-value") === "paperclip_runner");
+    expect(Boolean(option)).toBe(enabled);
+    if (!enabled) return;
+    expect(document.body.textContent).toContain("Advanced");
+    await clickElement(option);
+    await clickByText(result.container, "Save");
+    expect(result.onSave).toHaveBeenCalledWith(expect.objectContaining({
+      adapterType: "paperclip_runner",
+      adapterConfig: expect.objectContaining({ provider: "acpx", acpxAgent: "claude" }),
+    }));
+    expect(result.onSave.mock.calls[0][0].runner).toBeUndefined();
+  });
+
+  it.each([{ provider: "opencode", model: "openrouter/anthropic/claude-sonnet-4.6" }, { provider: "acpx", acpxAgent: "claude" }, { provider: "unknown-provider" }])("preserves saved native $provider configuration with the experimental gate off", async adapterConfig => {
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableNativeRunner: false });
+    const result = await renderForm([], { adapterType: "paperclip_runner", adapterConfig }, { showAdapterTypeField: true });
+    roots.push(result.root);
+    expect(result.container.querySelector('[aria-label="Runner"]')).toBeNull();
+    await act(async () => setInputValue(result.container.querySelector<HTMLInputElement>('[placeholder="Agent name"]')!, "Renamed native agent"));
+    await flushReact();
+    await clickByText(result.container, "Save");
+    expect(result.onSave).toHaveBeenCalledWith({ name: "Renamed native agent" });
+  });
+
   beforeEach(() => {
     mockAgentsApi.adapterModels.mockResolvedValue([]);
     mockAgentsApi.detectModel.mockResolvedValue(null);

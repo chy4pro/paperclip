@@ -198,7 +198,7 @@ describe("managed AI connections", () => {
         managedHome = runtime.home;
         return testNativeRunnerAuthentication({ companyId, adapterType: "paperclip_runner", config: runtime.config, managedAiCredentialHome: path.join(runtime.home!, "provider") }, "codex", "gpt-5.6-sol");
       });
-      expect(result.status).toBe("pass"); expect(probe).toHaveBeenCalledOnce();
+      expect(result.status, JSON.stringify(result)).toBe("pass"); expect(probe).toHaveBeenCalledOnce();
       expect(await service.credential(row)).toBe(auth("11"));
       await expect(access(managedHome!)).rejects.toMatchObject({ code: "ENOENT" });
       const [after] = await db.select({ adapterType: agents.adapterType, adapterConfig: agents.adapterConfig }).from(agents).where(eq(agents.id, agentId));

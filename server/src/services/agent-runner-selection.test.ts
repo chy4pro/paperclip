@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { agentHarnessType, agentRunner, paperclipRunnerProfileForHarness, paperclipRunnerSupportsPlatform, createAgentSchema, updateAgentSchema, testAdapterEnvironmentSchema } from "@paperclipai/shared";
 const state = vi.hoisted(() => ({ disabled: [] as string[], overridden: new Set<string>(), settings: {} as Record<string, unknown>, getEnvironment: vi.fn(), bindings: vi.fn(), managedEnvironment: vi.fn(), ssh: vi.fn(), resolveEnvironment: vi.fn() }));
 vi.mock("../adapters/registry.js", () => ({ findActiveServerAdapter: (type: string) => ({ type }), hasActiveAdapterOverride: (type: string) => state.overridden.has(type), waitForExternalAdapters: async () => {} }));
 vi.mock("./adapter-plugin-store.js", () => ({ getDisabledAdapterTypes: () => state.disabled }));
@@ -25,6 +26,12 @@ describe("server-owned Codex runner selection", () => {
   it("allows an explicit legacy runner and native to legacy round trip", () => {
     expect(resolveNewAgentRunner({ adapterType: "codex_local", target, runner: "legacy", adapterConfig: { extraArgs: ["--search"] } }).adapterType).toBe("codex_local");
     expect(resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "codex", model: "gpt-5.6-sol", lifecycleMode: "per_turn", codexPermissionMode: "never", modelReasoningEffort: "high" } })).toEqual({ adapterType: "codex_local", adapterConfig: { model: "gpt-5.6-sol", modelReasoningEffort: "high", dangerouslyBypassApprovalsAndSandbox: true } });
+  });
+  it("preserves explicit legacy permission policy alongside compatible native lifecycle defaults", () => {
+    expect(resolveNewAgentRunner({ adapterType: "codex_local", runner: "legacy", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false, lifecycleMode: "per_turn" } }))
+      .toEqual({ adapterType: "codex_local", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false } });
+    expect(resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "codex", codexPermissionMode: "never", lifecycleMode: "per_turn", dangerouslyBypassApprovalsAndSandbox: false } }))
+      .toEqual({ adapterType: "codex_local", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false } });
   });
   it.each(["darwin", "win32"])("keeps unqualified %s targets legacy while preserving explicit native profiles", platform => {
     const input = { adapterType: "codex_local", target: { driver: "local", platform, architecture: "x64" } };
@@ -92,5 +99,28 @@ describe("server-owned Codex runner selection", () => {
     state.getEnvironment.mockResolvedValue({ id: "sandbox", driver: "sandbox", status: "active", config: { provider: "daytona" } });
     const result = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "sandbox" });
     expect(result.adapterType).toBe("paperclip_runner"); expect(state.ssh).not.toHaveBeenCalled();
+  });
+});
+
+describe("Codex creation runner contract", () => {
+  it("graduates only Codex and retains saved provider identity", () => {
+    expect(paperclipRunnerProfileForHarness("codex_local")).toEqual({ provider: "codex" });
+    for (const harness of ["claude_local", "opencode_local", "grok_local", "cursor", "pi_local", "process"]) expect(paperclipRunnerProfileForHarness(harness)).toBeUndefined();
+    expect(agentHarnessType("paperclip_runner", { provider: "codex" })).toBe("codex_local");
+    expect(agentHarnessType("paperclip_runner", { provider: "acpx", acpxAgent: "claude" })).toBe("claude_local");
+    expect(agentHarnessType("paperclip_runner", { provider: "unknown" })).toBe("unknown");
+    expect(agentHarnessType("paperclip_runner", { provider: "acpx", acpxAgent: "unknown" })).toBe("acpx:unknown");
+    expect(agentRunner("codex_local")).toBe("legacy");
+    expect(agentRunner("paperclip_runner")).toBe("paperclip");
+  });
+  it("qualifies only the daemon actually shipped in public server packages", () => {
+    expect(paperclipRunnerSupportsPlatform("codex_local", "linux", "x64")).toBe(true);
+    for (const [platform, architecture] of [["darwin", "arm64"], ["darwin", "x64"], ["linux", "arm64"], ["win32", "x64"], ["freebsd", "x64"]]) expect(paperclipRunnerSupportsPlatform("codex_local", platform, architecture)).toBe(false);
+  });
+  it("keeps auto out of saved update defaults and validates request intent", () => {
+    expect(createAgentSchema.parse({ name: "Codex", adapterType: "codex_local" }).runner).toBeUndefined();
+    expect(updateAgentSchema.parse({ title: "same execution" })).not.toHaveProperty("runner");
+    expect(testAdapterEnvironmentSchema.parse({ runner: "legacy" }).runner).toBe("legacy");
+    expect(createAgentSchema.safeParse({ name: "Codex", adapterType: "codex_local", runner: "other" }).success).toBe(false);
   });
 });

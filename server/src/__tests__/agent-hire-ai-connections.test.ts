@@ -488,7 +488,7 @@ describe("agent-created hires use managed AI connections", () => {
 describe("hired agents sharing a subscription", () => {
   it("keeps a credential-lock timeout on automatic retry without blocking the task or starting a provider", async () => {
     const f = await fixture("openai", "subscription");
-    const agent = hired(await request(f.app).post(`/api/companies/${f.companyId}/agent-hires`).send({ name: "Waiting teammate", role: "engineer", adapterType: f.adapterType, reportsTo: f.agentId, adapterConfig: { engine: "cli" }, runtimeConfig: { heartbeat: { enabled: false } } }));
+    const agent = hired(await request(f.app).post(`/api/companies/${f.companyId}/agent-hires`).send({ name: "Waiting teammate", role: "engineer", adapterType: f.adapterType, runner: "legacy", reportsTo: f.agentId, adapterConfig: { engine: "cli" }, runtimeConfig: { heartbeat: { enabled: false } } }));
     // Only an operator may set host execution paths after the agent is hired.
     await db.update(agents).set({ adapterConfig: { ...agent.adapterConfig, cwd: home } }).where(eq(agents.id, agent.id));
     const [issue] = await db.insert(issues).values({ companyId: f.companyId, title: "Wait for credential rotation", status: "todo", assigneeAgentId: agent.id, responsibleUserId: f.userId, createdByUserId: f.userId }).returning();
@@ -531,7 +531,7 @@ describe("hired agents sharing a subscription", () => {
 
   it.each(["openai", "anthropic"] as const)("runs the %s child alongside a live parent and inherits its connection", async (provider) => {
     const f = await fixture(provider, "subscription");
-    const agent = hired(await request(f.app).post(`/api/companies/${f.companyId}/agent-hires`).send({ name: "Concurrent teammate", role: "engineer", adapterType: f.adapterType, reportsTo: f.agentId, adapterConfig: { engine: "cli" }, runtimeConfig: { heartbeat: { enabled: false } } }));
+    const agent = hired(await request(f.app).post(`/api/companies/${f.companyId}/agent-hires`).send({ name: "Concurrent teammate", role: "engineer", adapterType: f.adapterType, runner: "legacy", reportsTo: f.agentId, adapterConfig: { engine: "cli" }, runtimeConfig: { heartbeat: { enabled: false } } }));
     // Host working directories are configured by an operator, not an agent key.
     await db.update(agents).set({ adapterConfig: { ...agent.adapterConfig, cwd: home } }).where(eq(agents.id, agent.id));
     const [issue] = await db.insert(issues).values({ companyId: f.companyId, title: "Subscription child task", status: "todo", assigneeAgentId: agent.id, responsibleUserId: f.userId, createdByUserId: f.userId }).returning();

@@ -41,7 +41,7 @@ Canonical PR: [draft #15683](https://github.com/paperclipai/paperclip/pull/15683
 Initial CI candidate: `8ce217b71`. Scoped environment discovery and native import
 preservation are committed at `5ba1bc986`; the final follow-up preserves saved
 model, effort, and timeout through runner-only built-in configuration changes.
-Preview: [isolated Codex QA](http://127.0.0.1:3124), normal dev supervisor,
+Preview: [isolated Codex QA](http://127.0.0.1:3125), normal dev supervisor,
 separate empty database. Current-head live evidence is pending the source freeze
 and verified binary provenance; older services and artifacts are not proof.
 
@@ -136,6 +136,37 @@ pass 280 cases plus three final regressions. Missing discovery metadata shows
 loading or the server error with Retry; explicit Legacy remains available.
 Final portability checks pass 105 cases; approval, built-in asset and CLI unit
 controls pass eight, three and three. The 72 skipped DB cases still need Linux.
-Final candidate Storybook builds at `5ba1bc986`; fresh desktop/mobile captures
-are in progress against the frozen UI tree. The runner-only built-in regression
-now checks nondefault settings through switches in both directions.
+Candidate `b7194275e` completed 38 CI checks but failed 14, including aggregate
+checks. Its fresh review reported three P1 findings. The fixes preserve explicit
+legacy sandbox policy, return refreshed unmanaged subscription credentials to
+their authorized source account, and restore gated experimental native choices
+for other providers under Advanced. Actor restrictions now run before harness
+translation and again on the resolved configuration. Existing route fixtures
+use the real resolver; legacy execution controls request Legacy explicitly.
+Capability drift was fixed by preserving existing documentation heading anchors,
+without changing generated contracts. The retired Codex flag control now uses
+an experimental OpenCode profile; all 45 corpus regressions pass locally.
+Core regression checks pass 394 cases, with 147 final guard/inheritance controls;
+server noemit passes. UI checks pass 212 cases, typecheck and token gates. The
+original touch/wheel journeys pass two cases against the isolated preview.
+Final desktop/mobile/keyboard captures and the Advanced experimental story are
+being checked against the frozen UI tree. Earlier 26 desktop/six mobile/three
+keyboard checks passed on the previous UI revision. The built-in regression
+checks nondefault settings through runner-only switches in both directions.
+
+Exactly $22 of documented unstarted staging reservations were reassigned to
+Codex-only proof: $12 Linux onboarding (one existing campaign, at most two
+attempts), $5.50 managed onboarding, $2.50 attended local proof, and $2 incremental
+compute/cleanup. The attempted $5 staging setup envelope remains an unknown-cost
+hold. Aggregate costs/reservations stay $248.179254104 under the original $250
+allocation; no historical unknown or cleanup hold was released. This is not an
+invoice-certified balance. No new paid provider task has run in this slice.
+
+Attended local Codex login is pending in the embedded browser at OpenAI security
+verification. Staging Fleet Admin requires fresh attended sign-in. The dedicated
+QA stack `stack-pool-d06dca5eafe7` and its old immutable environment are identified
+historically; current access, serving revision, retained snapshot and physical
+cleanup must be verified before reuse. Old archived probe resources and missing
+compute billing remain unresolved. Do not substitute old artifacts or passing CI
+for these live gates. The next candidate must pass fresh CI and review before
+merge sign-off; actual private cloud composition remains post-merge work.

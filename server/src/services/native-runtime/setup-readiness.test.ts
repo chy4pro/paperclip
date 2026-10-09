@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 const { execute, nativeProbe, selectedRunner, sshExecute, sshRunner, nativeArtifacts, remoteLauncher, registerPrp, ingressConnect } = vi.hoisted(() => ({ execute: vi.fn(), nativeProbe: vi.fn(), selectedRunner: vi.fn(), sshExecute: vi.fn(), sshRunner: vi.fn(), nativeArtifacts: vi.fn(), remoteLauncher: vi.fn(), registerPrp: vi.fn(), ingressConnect: vi.fn() }));
@@ -65,6 +65,33 @@ describe("Codex selected native account verification", () => {
     expect(input.environment.OPENAI_API_KEY).toBeUndefined();
     expect(input.environment.HOME).toBeUndefined();
     expect(input.runtimeDirectory).not.toContain("host-home");
+  });
+  it.each(["same-account", "another-account", "bound-key", "invalid-handoff"] as const)("preserves the authorized unmanaged login refresh before local cleanup (%s)", async mode => {
+    const home = await realpath(await mkdtemp(join(tmpdir(), "native-local-login-")));
+    const auth = (account: string, marker: string, age: number) => JSON.stringify({ tokens: { account_id: account, id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: new Date(Date.now() - age).toISOString() });
+    const store = join(home, "account.json");
+    try {
+      await writeFile(store, auth("qa-account", "old", 120_000), { mode: 0o600 });
+      // Existing per-agent homes can point at their authorized shared account.
+      await symlink(store, join(home, "auth.json"));
+      nativeProbe.mockImplementation(async input => {
+        const privateHome = join(input.runtimeDirectory, "codex-home");
+        await mkdir(privateHome, { mode: 0o700 });
+        const filename = join(privateHome, "auth.json");
+        await writeFile(filename, auth(mode === "another-account" ? "other-account" : "qa-account", "new", 60_000), { mode: 0o600 });
+        if (mode === "bound-key") expect(input.onCodexCredentialRefresh).toBeUndefined();
+        else await input.onCodexCredentialRefresh(mode === "invalid-handoff" ? store : filename);
+        await input.onCleanupConfirmed();
+        return receipt("codex", "gpt-6.1-sol");
+      });
+      const result = await testNativeRunnerAuthentication({ companyId: "company", adapterType: "paperclip_runner", config: { env: { CODEX_HOME: home, ...(mode === "bound-key" ? { OPENAI_API_KEY: "selected-key" } : {}) } } }, "codex", "gpt-6.1-sol");
+      expect(result.status).toBe(mode === "invalid-handoff" ? "fail" : "pass");
+      expect(JSON.parse(await readFile(store, "utf8")).tokens.access_token).toBe(mode === "same-account" ? "access-new" : "access-old");
+      expect((await stat(store)).mode & 0o777).toBe(0o600);
+      expect(await realpath(join(home, "auth.json"))).toBe(store);
+      expect(JSON.stringify(result)).not.toContain("access-new");
+      if (mode !== "invalid-handoff") await expect(stat(nativeProbe.mock.calls[0][0].runtimeDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await rm(home, { recursive: true, force: true }); }
   });
   const sshContext = { companyId: "company", adapterType: "paperclip_runner", config: {}, executionTarget: {
     kind: "remote" as const, transport: "ssh" as const, remoteCwd: "/qa-workspace", spec: { host: "qa-host", username: "qa-user", port: 22, remoteCwd: "/qa-workspace", remoteWorkspacePath: "/qa-workspace", privateKey: null, knownHosts: null, strictHostKeyChecking: true },

@@ -98,7 +98,6 @@ export function createSettingsFixtures(
     adapterType: adapterType as AgentDetail["adapterType"],
     adapterConfig: {
       "access.MODEL_API": { type: "secret_ref", secretId: "secret-openai" },
-      ...(adapterType === "paperclip_runner" ? { provider: "codex", model: "gpt-5.6-sol", modelReasoningEffort: "high" } : adapterType === "codex_local" ? { model: "gpt-5.6-sol", modelReasoningEffort: "high" } : {}),
     },
     runtimeConfig: {
       heartbeat: {

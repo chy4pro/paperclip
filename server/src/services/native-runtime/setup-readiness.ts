@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { copyBackCodexAuth } from "@paperclipai/adapter-codex-local/server";
@@ -34,6 +34,7 @@ async function probeRemoteNativeCodex(options: {
   reasoningEffort?: string;
   environment: Record<string, string>;
   sourceCodexHome: string;
+  credentialRefreshAuthPath?: string;
   timeoutMs: number;
 }) {
   const target = options.context.executionTarget;
@@ -67,7 +68,7 @@ async function probeRemoteNativeCodex(options: {
   const requireSuccess = (result: { timedOut: boolean; exitCode: number | null }, message: string) => {
     if (result.timedOut || result.exitCode !== 0) throw new Error(message);
   };
-  const runtimeDirectory = await mkdtemp(join(tmpdir(), "paperclip-native-setup-"));
+  const runtimeDirectory = await realpath(await mkdtemp(join(tmpdir(), "paperclip-native-setup-")));
   let remoteDirectoryCreated = false;
   let remoteCaBundlePath: string | undefined;
   let signalSpawned!: () => void;
@@ -124,9 +125,9 @@ async function probeRemoteNativeCodex(options: {
           }
         } }),
     },
-    ...(options.context.managedAiCredentialHome ? { onCodexCredentialRefresh: async (filename: string) => {
+    ...(options.credentialRefreshAuthPath ? { onCodexCredentialRefresh: async (filename: string) => {
       if (filename !== posix.join(remoteFilesystemRoot, "codex-home", "auth.json")) throw new Error("The native Codex credential refresh handoff is invalid.");
-      await copyBackCodexAuth({ hostAuthPath: join(options.context.managedAiCredentialHome!, "auth.json"), log: () => {}, readSandboxAuth: async () => {
+      await copyBackCodexAuth({ hostAuthPath: options.credentialRefreshAuthPath!, log: () => {}, readSandboxAuth: async () => {
         // Reuse the task's shell/base64 handoff without requiring a guest JS
         // runtime. Bound and validate the private owner-only credential file.
         const read = await runner.execute({ command: "sh", args: ["-c", 'set -eu; file=$1; test -f "$file" || exit 66; test ! -L "$file"; parent=$(dirname -- "$file"); while test "$parent" != /; do test -d "$parent" && test ! -L "$parent"; parent=$(dirname -- "$parent"); done; metadata=$(stat -c "%u %a %s" "$file" 2>/dev/null || stat -f "%u %Lp %z" "$file"); set -- $metadata; test "$1" = "$(id -u)" && test "$2" = 600 && test "$3" -le 65536; head -c 65537 -- "$file" | base64', "paperclip-native-refresh", filename], bypassSession: true, timeoutMs: 10_000 });
@@ -170,18 +171,31 @@ export async function testNativeRunnerAuthentication(context: AdapterEnvironment
       const { buildNativeProviderEnvironment } = await import("./native-session-executor.js");
       sourceCodexHome = context.managedAiCredentialHome ?? resolveSourceCodexHome(buildNativeProviderEnvironment(environment));
     }
+    // Preserve refreshes in the authorized source account before deleting the
+    // private probe home. API-key probes must never write to a host login.
+    let credentialRefreshAuthPath: string | undefined;
+    if (sourceCodexHome && !environment.OPENAI_API_KEY?.trim() && !environment.PAPERCLIP_AI_PROVIDER_KEY?.trim()) {
+      try {
+        credentialRefreshAuthPath = await realpath(join(sourceCodexHome, "auth.json"));
+        const source = await stat(credentialRefreshAuthPath);
+        if (!source.isFile() || source.uid !== process.getuid?.()) throw new Error("Invalid Codex source credential owner.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
     let receipt: Awaited<ReturnType<typeof probeNativeRunnerEnvironment>>;
     if (context.executionTarget?.kind === "remote") {
-      receipt = await probeRemoteNativeCodex({ context, model, environment, sourceCodexHome: sourceCodexHome ?? "", timeoutMs,
+      receipt = await probeRemoteNativeCodex({ context, model, environment, sourceCodexHome: sourceCodexHome ?? "", credentialRefreshAuthPath, timeoutMs,
         ...(typeof effort === "string" && effort ? { reasoningEffort: effort } : {}) });
     } else {
-      runtimeDirectory = await mkdtemp(join(tmpdir(), "paperclip-native-setup-"));
+      runtimeDirectory = await realpath(await mkdtemp(join(tmpdir(), "paperclip-native-setup-")));
       receipt = await probeNativeRunnerEnvironment({ runtimeDirectory, provider, model, environment, timeoutMs,
         ...(provider === "codex" && typeof effort === "string" && effort ? { reasoningEffort: effort } : {}),
         onCleanupConfirmed: async () => { await rm(runtimeDirectory!, { recursive: true, force: true }); },
         transportOptions: { runnerBinary: resolvePaperclipRunnerBinary(), sourceCodexHome: sourceCodexHome ?? "" },
-        ...(context.managedAiCredentialHome && provider === "codex" ? { onCodexCredentialRefresh: async (filename: string) => {
-          await copyBackCodexAuth({ hostAuthPath: join(context.managedAiCredentialHome!, "auth.json"), log: () => {}, readSandboxAuth: async () => Buffer.from(await readLocalAiCredentialFile(filename)) });
+        ...(credentialRefreshAuthPath ? { onCodexCredentialRefresh: async (filename: string) => {
+          if (filename !== join(runtimeDirectory!, "codex-home", "auth.json")) throw new Error("The native Codex credential refresh handoff is invalid.");
+          await copyBackCodexAuth({ hostAuthPath: credentialRefreshAuthPath!, log: () => {}, readSandboxAuth: async () => Buffer.from(await readLocalAiCredentialFile(filename)) });
         } } : {}),
       });
     }
