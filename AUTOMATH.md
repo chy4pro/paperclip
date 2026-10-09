@@ -19,6 +19,7 @@ This fork carries the customisations the automath research pipeline runs on top 
 | 4 | run pools: `PAPERCLIP_RUN_POOLS="codex:2:scout,attacker-1,attacker-2,formalizer"` caps simultaneously running runs across named agents (and `PAPERCLIP_ADAPTER_CONCURRENCY_LIMITS` per adapter type), count and claim under a Postgres advisory lock at the single admission point | related: #7041, #14564, PR #14333, PR #14995 — commented, not a parallel PR |
 | 5 | session codecs keep `remoteExecution` (claude_local and codex_local) | upstream PR #12930 (open), confirmed there |
 | 6 | ssh session identity keyed on `remoteWorkspacePath`; codex_local skips the per-run cwd comparison on remote targets | issue #15709, PR #15710 |
+| 7 | ssh runtime assets in a per-key state directory; codex_local keys it by task so `CODEX_HOME` (and its session rollouts) survives across runs | issue #15723, PR #15724 |
 
 Already in upstream master and therefore not carried separately: #15437 (prompt bundle key stable across
 per-run instruction copies; applied to the 2026.1005.0 bundle locally as a backport until the next release).
