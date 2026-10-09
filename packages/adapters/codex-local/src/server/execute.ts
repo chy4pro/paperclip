@@ -818,10 +818,20 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           // large runtime state (`sessions/`, `*.sqlite`, `plugins/`, …) that the
           // 4-name denylist missed and that a sandbox run never needs.
           stagedCodexHomeDir = await stageCodexHomeForSync(effectiveCodexHome, { runId });
+          // Codex keeps its session rollouts under CODEX_HOME. A per-run home
+          // would leave every resume with "no rollout found", so keep the home
+          // per task on remote targets.
+          const assetStateTaskKey =
+            (typeof context.taskKey === "string" && context.taskKey.trim()) ||
+            (typeof context.issueId === "string" && context.issueId.trim()) ||
+            null;
           return await prepareAdapterExecutionTargetRuntime({
             runId,
             target: executionTarget,
             adapterKey: "codex",
+            assetStateKey: assetStateTaskKey
+              ? `task-${assetStateTaskKey.replace(/[^A-Za-z0-9_.-]/g, "_")}`
+              : undefined,
             timeoutSec,
             workspaceLocalDir: cwd,
             workspaceRemoteDir:
