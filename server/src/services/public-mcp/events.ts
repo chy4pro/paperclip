@@ -49,14 +49,16 @@ const dotEventDefinition = {
 export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDispatch, options: { fetch?: EventFetch; now?: () => number; cloudOrigin?: string; enableDotPrototype?: boolean; enableDotRunner?: boolean; isBackgroundWorkEnabled?: () => boolean } = {}) {
   const fetcher = options.fetch ?? eventFetch;
   const now = options.now ?? Date.now;
-  const cloudOrigin = options.cloudOrigin ?? process.env.PAPERCLIP_CLOUD_API_ORIGIN;
+  // Dedicated tenant Dot grants are authenticated locally, including background
+  // deliveries. They never use the personal connection's Cloud broker proof.
+  const cloudOrigin = options.enableDotRunner ? undefined : options.cloudOrigin ?? process.env.PAPERCLIP_CLOUD_API_ORIGIN;
   if (cloudOrigin && (new URL(cloudOrigin).protocol !== "https:" || new URL(cloudOrigin).origin !== cloudOrigin)) throw new Error("MCP Events requires a fixed HTTPS Cloud origin.");
   const encrypt = async (value: Destination) => (await localEncryptedProvider.createSecret({ value: JSON.stringify(value) })).material;
   const decrypt = async (s: Subscription): Promise<Destination> => JSON.parse(await localEncryptedProvider.resolveVersion({ material: s.deliveryMaterial, externalRef: null, providerVersionRef: null }));
 
   async function authorize(principal: McpPrincipal, args: z.infer<typeof resourceFilters>) {
     if (args.bindingId) {
-      if (!options.enableDotRunner || cloudOrigin) throw new McpEventError(-32602, "Dot requires the direct self-hosted agent endpoint; the Cloud agent broker is not qualified.");
+      if (!options.enableDotRunner) throw new McpEventError(-32602, "Dot requires the dedicated agent endpoint.");
       await dotRunnerBroker(db).authorizeBinding(principal, args.companyId, args.bindingId); return;
     }
     if (args.companyId !== principal.grant.companyId || !principal.grant.scopes.includes("paperclip:read")) throw new McpEventError(-32602, "This task is outside the authorized company.");

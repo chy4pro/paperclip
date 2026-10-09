@@ -138,7 +138,7 @@ class RunnerdDotSession implements HarnessSession {
     signal?.throwIfAborted();
     if (!o.adoptExistingRunner) {
       this.#process = spawnRunner({
-        processLauncher: o.runnerProcessLauncher, connectUrl: registration?.connectUrl ?? core.connectUrl,
+        processLauncher: o.runnerProcessLauncher, connectUrl: registration?.connectUrl ?? (registration?.connection ? undefined : core.connectUrl),
         connection: registration?.connection, stateDirectory: runnerState, identity: o.identity,
         ticket: core.issueBootstrapTicket(60_000), runnerBinaryPath: binary,
         runnerVersion: artifact.version, runnerDigest: artifact.digest,
@@ -169,6 +169,9 @@ class RunnerdDotSession implements HarnessSession {
       if (!this.#closed) { this.#failure = error instanceof Error ? error : new Error("dot_runner_transport_failed"); this.#wake(); }
     });
     const checkpoint = await readProviderCheckpoint(o);
+    if (!checkpoint && this.#events.some(event => event.eventType === "external_provider.dispatch_requested")) {
+      throw new Error("dot_provider_checkpoint_missing_reconciliation_required");
+    }
     if (checkpoint && (checkpoint.schema !== "paperclip.runner.dot-provider-state.v1"
       || checkpoint.runId !== o.identity.runId || checkpoint.sessionId !== o.identity.normalizedSessionId
       || checkpoint.turnId !== o.identity.turnId)) throw new Error("dot_runner_checkpoint_authority_mismatch");
@@ -223,6 +226,11 @@ class RunnerdDotSession implements HarnessSession {
   async interrupt() { await this.#command("run.cancel", {}, "dot_cancel"); }
   async snapshot(): Promise<PersistedHarnessSession> {
     const state = await this.read();
+    // Target-owned state is authoritative. Also retain the controller's recovery
+    // evidence through the supplied reader after this authenticated snapshot.
+    if (this.options.readProviderState && !await readProviderCheckpoint(this.options)) {
+      throw new Error("dot_provider_checkpoint_missing_reconciliation_required");
+    }
     const proposed = this.#events.findLast(event => event.eventType === "run.result.proposed");
     const result = proposed ? validatePrpStructuredRunResult(proposed.payload) : null;
     const terminal = this.#events.findLast(event => event.eventType === "run.terminal");

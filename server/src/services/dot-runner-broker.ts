@@ -1,4 +1,5 @@
 import { updateAgentConfigurationInTransaction } from "./agent-configuration-transaction.js";
+import type { heartbeatService } from "./heartbeat.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -21,8 +22,17 @@ import { getNativeReviewAssignment, readNativeReviewAssignmentContext } from "./
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const fail = (message: string) => new McpOAuthError("access_denied", message, 409);
+type DotHeartbeat = Pick<ReturnType<typeof heartbeatService>, "wakeup" | "cancelRun">;
 const instances = new WeakMap<Db, ReturnType<typeof createBroker>>();
-export function dotRunnerBroker(db: Db) {
+const heartbeatContexts = new WeakMap<Db, DotHeartbeat>();
+async function admissionHeartbeat(db: Db): Promise<DotHeartbeat> {
+  const configured = heartbeatContexts.get(db);
+  if (configured) return configured;
+  const { heartbeatService } = await import("./heartbeat.js");
+  return heartbeatService(db);
+}
+export function dotRunnerBroker(db: Db, options?: { heartbeat?: DotHeartbeat }) {
+  if (options?.heartbeat) heartbeatContexts.set(db, options.heartbeat);
   let service = instances.get(db);
   if (!service) { service = createBroker(db); instances.set(db, service); }
   return service;
@@ -312,7 +322,7 @@ function createBroker(db: Db) {
         if (!assignment) await new Promise(resolve => setTimeout(resolve, 50));
       } while (!assignment && Date.now() < deadline);
       return { ...wake, issueId: task.id, identifier: task.identifier, assignment: assignment ?? null,
-        instruction: "Drain the inbox now. If assignment is present, read and accept it, then use its catalog. If admission is still pending, retry paperclip_dot_request_turn with exactly the same requestId and prompt to check this intake; never create a second request. Events also notify queued work. This intake supplies normal run authority; no human needs to create a preliminary task." };
+        instruction: wake.status === "admission_failed" ? wake.message : "Drain the inbox now. If assignment is present, read and accept it, then use its catalog. If admission is still pending, retry paperclip_dot_request_turn with exactly the same requestId and prompt to check this intake; never create a second request. Events also notify queued work. This intake supplies normal run authority; no human needs to create a preliminary task." };
     },
     async requestWork(principal: McpPrincipal, issueId: string, requestId: string) {
       const b = await principalBinding(principal);
@@ -320,8 +330,15 @@ function createBroker(db: Db) {
       if (!await enabled() || !(await this.bindingForAgent(b.companyId, b.agentId))?.subscriptionVerified) throw fail("Dot admission is unavailable.");
       const key = `dot-work:${b.id}:${b.generation}:${requestId}`;
       const receipt = async () => (await db.select().from(agentWakeupRequests).where(and(eq(agentWakeupRequests.companyId, b.companyId), eq(agentWakeupRequests.agentId, b.agentId), eq(agentWakeupRequests.idempotencyKey, key))).limit(1))[0];
-      const replay = (row: typeof agentWakeupRequests.$inferSelect) => {
+      const replay = async (row: typeof agentWakeupRequests.$inferSelect) => {
         if (row.payload?.issueId !== issueId) throw fail("requestId was reused for another task.");
+        const [run] = row.runId ? await db.select({ status: heartbeatRuns.status }).from(heartbeatRuns).where(and(
+          eq(heartbeatRuns.id, row.runId), eq(heartbeatRuns.companyId, b.companyId), eq(heartbeatRuns.agentId, b.agentId),
+        )).limit(1) : [];
+        if (run && ["failed", "cancelled", "timed_out"].includes(run.status)) {
+          return { status: "admission_failed", runId: row.runId, admissionStatus: run.status,
+            message: "The previous admission ended without an active assignment. Stop waiting for its mailbox event. Inspect the task's run and use normal task recovery after resolving the failure. This request ID retains its original receipt." };
+        }
         return { status: "requested", runId: row.runId, message: "Normal admission determines when this task can run. Read the mailbox after its event." };
       };
       // A retry is a receipt read, including after the task yielded or finished.
@@ -333,9 +350,9 @@ function createBroker(db: Db) {
       // Different issue locks cannot admit the same request concurrently.
       const hex = hash(key);
       const receiptId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${((parseInt(hex[16]!, 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-      const { heartbeatService } = await import("./heartbeat.js");
+      const heartbeat = await admissionHeartbeat(db);
       try {
-        const run = await heartbeatService(db).wakeup(b.agentId, { source: "assignment", triggerDetail: "system", reason: "issue_assigned",
+        const run = await heartbeat.wakeup(b.agentId, { source: "assignment", triggerDetail: "system", reason: "issue_assigned",
           payload: { issueId, dotRequestId: requestId }, contextSnapshot: { issueId }, idempotencyKey: key, requestedByActorType: "agent", requestedByActorId: b.agentId,
           allowRunCoalescing: false, durableDotRequest: { id: receiptId, companyId: b.companyId, agentId: b.agentId, issueId, requestId, idempotencyKey: key, requestedAt: new Date() } });
         const reserved = await receipt();
@@ -443,8 +460,7 @@ function createBroker(db: Db) {
       });
       await Promise.all(runs.map(async ({ runId }) => {
         await ports.get(runId)?.revoke?.().catch(() => {});
-        const { heartbeatService } = await import("./heartbeat.js");
-        await heartbeatService(db).cancelRun(runId, "Dot connection revoked");
+        await (await admissionHeartbeat(db)).cancelRun(runId, "Dot connection revoked");
       }));
     },
     async assertRunAuthority(execution: { binding: { runId: string }; provider: { binding: DotBindingSnapshot } }) {
@@ -557,8 +573,8 @@ function createBroker(db: Db) {
   };
 }
 
-export function createDotRunnerMcpTools(db: Db): PublicMcpToolExtension {
-  const broker = dotRunnerBroker(db);
+export function createDotRunnerMcpTools(db: Db, heartbeat?: DotHeartbeat): PublicMcpToolExtension {
+  const broker = dotRunnerBroker(db, { heartbeat });
   const request = { assignmentId: z.uuid(), requestId: z.uuid() };
   const definitions = [
     { name: "paperclip_dot_set_avatar", description: "Update only your bound Paperclip agent's avatar, including while idle after pairing. If you can obtain your own avatar, send its PNG/JPEG/WebP bytes as raw base64 (max 512 KiB, static image). Do not send a URL or invent an image. Use imageBase64: null to restore the Paperclip character. Repeating the same image is safe. No active assignment is needed.", schema: setAgentAvatarSchema },

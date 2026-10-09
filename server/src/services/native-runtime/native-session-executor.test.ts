@@ -2521,6 +2521,14 @@ describe("remote runner build metadata", () => {
     ).not.toThrow();
   });
 
+  it("requires an explicit Dot bridge capability only for remote Dot execution", () => {
+    expect(() => assertRemoteRunnerBuildMetadata(current, "listen_ws", "openai_dot_mcp"))
+      .toThrow("runner_remote_dot_capability_missing");
+    expect(() => assertRemoteRunnerBuildMetadata({ ...current, externalProviderCapabilities: ["openai_dot_mcp"] },
+      "listen_ws", "openai_dot_mcp")).not.toThrow();
+    expect(() => assertRemoteRunnerBuildMetadata(current, "listen_ws")).not.toThrow();
+  });
+
   it("fails before dispatch when a preinstalled runner uses the stale contract", () => {
     expect(() =>
       assertRemoteRunnerBuildMetadata(
