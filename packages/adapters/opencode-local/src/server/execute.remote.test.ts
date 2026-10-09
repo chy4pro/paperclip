@@ -204,7 +204,7 @@ describe("opencode remote execution", () => {
         host: "127.0.0.1",
         port: 2222,
         username: "fixture",
-        remoteCwd: managedRemoteWorkspace,
+        remoteCwd: "/remote/workspace",
       },
     });
     expect(prepareWorkspaceForSshExecution).toHaveBeenCalledTimes(1);
@@ -361,7 +361,7 @@ describe("opencode remote execution", () => {
             host: "127.0.0.1",
             port: 2222,
             username: "fixture",
-            remoteCwd: managedRemoteWorkspace,
+            remoteCwd: "/remote/workspace",
           },
         },
         sessionDisplayId: "session-123",
