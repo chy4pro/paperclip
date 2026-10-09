@@ -1859,7 +1859,133 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
     }
   }
 
+  // Run pools: cross-agent concurrency caps (opt-in). Two membership rules:
+  //   PAPERCLIP_RUN_POOLS="codex:2:scout,attacker-1,attacker-2,formalizer"   explicit agent groups (per company)
+  //   PAPERCLIP_ADAPTER_CONCURRENCY_LIMITS='{"codex_local":2}'              per adapter type, instance-wide
+  // An agent in a named group uses that group; otherwise its adapter type's limit, if any; otherwise no cap.
+  // The count and the claims happen under a Postgres advisory lock keyed by the pool, so two agents of one
+  // pool ticking at the same moment cannot both read the same headroom. When a run of a pooled agent ends,
+  // its pool-mates' queues are re-checked so a freed slot is used without waiting for a wake.
+  type RunPool =
+    | { kind: "group"; key: string; max: number; members: Set<string>; companyId: string }
+    | { kind: "adapter"; key: string; max: number; adapterType: string };
+  const RUN_POOL_GROUPS = (process.env.PAPERCLIP_RUN_POOLS ?? "")
+    .split(";")
+    .map((spec) => spec.trim())
+    .filter(Boolean)
+    .map((spec) => {
+      const [name, max, members] = spec.split(":");
+      return {
+        key: `group:${name}`,
+        max: Math.floor(Number(max)),
+        members: new Set((members ?? "").split(",").map((member) => member.trim()).filter(Boolean)),
+      };
+    })
+    .filter((group) => Number.isFinite(group.max) && group.max >= 1 && group.members.size > 0);
+  const RUN_POOL_ADAPTER_LIMITS: Record<string, number> = (() => {
+    const raw = process.env.PAPERCLIP_ADAPTER_CONCURRENCY_LIMITS;
+    if (!raw || !raw.trim()) return {};
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const limits: Record<string, number> = {};
+    for (const [adapterType, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const limit = typeof value === "number" ? value : Number(value);
+      if (Number.isFinite(limit) && limit >= 1) limits[adapterType] = Math.floor(limit);
+    }
+    return limits;
+  })();
+  function resolveRunPool(agent: typeof agents.$inferSelect): RunPool | null {
+    const group = RUN_POOL_GROUPS.find((candidate) => candidate.members.has(agent.name));
+    if (group) return { kind: "group", key: group.key, max: group.max, members: group.members, companyId: agent.companyId };
+    const limit = RUN_POOL_ADAPTER_LIMITS[agent.adapterType];
+    if (limit !== undefined) return { kind: "adapter", key: `adapter:${agent.adapterType}`, max: limit, adapterType: agent.adapterType };
+    return null;
+  }
+  async function countRunningRunsForPool(pool: RunPool, executor: Db = db) {
+    if (pool.kind === "group") {
+      const [{ count }] = await executor
+        .select({ count: sql<number>`count(*)` })
+        .from(heartbeatRuns)
+        .innerJoin(agents, eq(agents.id, heartbeatRuns.agentId))
+        .where(and(eq(heartbeatRuns.companyId, pool.companyId), eq(heartbeatRuns.status, "running"), inArray(agents.name, [...pool.members])));
+      return Number(count ?? 0);
+    }
+    const dispatchedAdapterType = sql<string | null>`${heartbeatRuns.runnerProfileJson}->'adapterDispatch'->>'adapterType'`;
+    const [{ count }] = await executor
+      .select({ count: sql<number>`count(*)` })
+      .from(heartbeatRuns)
+      .innerJoin(agents, eq(agents.id, heartbeatRuns.agentId))
+      .where(and(eq(heartbeatRuns.status, "running"), eq(sql`coalesce(${dispatchedAdapterType}, ${agents.adapterType})`, pool.adapterType)));
+    return Number(count ?? 0);
+  }
+  async function claimQueuedRunOrRecordRejection(
+    queuedRun: typeof heartbeatRuns.$inferSelect,
+    companyAgents: Awaited<ReturnType<typeof listCompanyAgentOrgRows>>,
+    rejectedClaims: Array<{ run: typeof heartbeatRuns.$inferSelect; err: HttpError }>,
+  ) {
+    try {
+      return await claimQueuedRun(queuedRun, companyAgents);
+    } catch (err) {
+      if (isPermanentClaimRejection(err)) {
+        rejectedClaims.push({ run: queuedRun, err });
+        return null;
+      }
+      if (!isDeferrableClaimRejection(err)) throw err;
+      logger.warn(
+        { err, runId: queuedRun.id, agentId: queuedRun.agentId, companyId: queuedRun.companyId },
+        "queued heartbeat run claim was rejected; leaving it queued for the next recovery pass",
+      );
+      return null;
+    }
+  }
+  async function claimRunsWithPoolGuard(
+    agent: typeof agents.$inferSelect,
+    prioritizedRuns: Array<typeof heartbeatRuns.$inferSelect>,
+    maxClaims: number,
+    companyAgents: Awaited<ReturnType<typeof listCompanyAgentOrgRows>>,
+    rejectedClaims: Array<{ run: typeof heartbeatRuns.$inferSelect; err: HttpError }>,
+  ) {
+    const claimedRuns: Array<typeof heartbeatRuns.$inferSelect> = [];
+    const pool = resolveRunPool(agent);
+    if (!pool) {
+      for (const queuedRun of prioritizedRuns) {
+        if (claimedRuns.length >= maxClaims) break;
+        const claimed = await claimQueuedRunOrRecordRejection(queuedRun, companyAgents, rejectedClaims);
+        if (claimed) claimedRuns.push(claimed);
+      }
+      return claimedRuns;
+    }
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${pool.key}))`);
+      const running = await countRunningRunsForPool(pool, tx as unknown as Db);
+      const allowed = Math.max(0, Math.min(maxClaims, pool.max - running));
+      for (const queuedRun of prioritizedRuns) {
+        if (claimedRuns.length >= allowed) break;
+        const claimed = await claimQueuedRunOrRecordRejection(queuedRun, companyAgents, rejectedClaims);
+        if (claimed) claimedRuns.push(claimed);
+      }
+    });
+    return claimedRuns;
+  }
   async function startNextQueuedRunForAgent(agentId: string) {
+    const started = await startNextQueuedRunForAgentCore(agentId);
+    const agent = await getAgent(agentId);
+    const pool = agent ? resolveRunPool(agent) : null;
+    if (!agent || !pool) return started;
+    const mates = pool.kind === "group"
+      ? await db.select({ id: agents.id }).from(agents).where(and(eq(agents.companyId, agent.companyId), inArray(agents.name, [...pool.members])))
+      : await db.select({ id: agents.id }).from(agents).where(and(eq(agents.companyId, agent.companyId), eq(agents.adapterType, pool.adapterType)));
+    for (const mate of mates) {
+      if (mate.id !== agentId) await startNextQueuedRunForAgentCore(mate.id);
+    }
+    return started;
+  }
+  async function startNextQueuedRunForAgentCore(agentId: string) {
     if ((await getSchedulingSuppression()).suppressed) return [];
     const cutoff = await getWorktreeExecutionCutoff();
     // Cancelled after the start lock is released: cancelRunInternal promotes the
@@ -1971,26 +2097,7 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
         return left.createdAt.getTime() - right.createdAt.getTime();
       });
 
-      const claimedRuns: Array<typeof heartbeatRuns.$inferSelect> = [];
-      for (const queuedRun of prioritizedRuns) {
-        if (claimedRuns.length >= availableSlots) break;
-        let claimed: typeof heartbeatRuns.$inferSelect | null;
-        try {
-          claimed = await claimQueuedRun(queuedRun, companyAgents);
-        } catch (err) {
-          if (isPermanentClaimRejection(err)) {
-            rejectedClaims.push({ run: queuedRun, err });
-            continue;
-          }
-          if (!isDeferrableClaimRejection(err)) throw err;
-          logger.warn(
-            { err, runId: queuedRun.id, agentId: queuedRun.agentId, companyId: queuedRun.companyId },
-            "queued heartbeat run claim was rejected; leaving it queued for the next recovery pass",
-          );
-          continue;
-        }
-        if (claimed) claimedRuns.push(claimed);
-      }
+      const claimedRuns = await claimRunsWithPoolGuard(agent, prioritizedRuns, availableSlots, companyAgents, rejectedClaims);
       if (claimedRuns.length === 0) return [];
 
       for (const claimedRun of claimedRuns) {
