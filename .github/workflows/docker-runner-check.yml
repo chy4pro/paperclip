@@ -240,5 +240,4 @@ jobs:
           name: grok-remote-verification-${{ github.run_id }}
           path: remote-verification/
           compression-level: 0
-          retention-days: 1
-          retention-days: 7
+          retention-days: ${{ inputs.build_eval_image && 1 || 7 }}
