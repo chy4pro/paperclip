@@ -68,6 +68,44 @@ describe("remote managed runtime", () => {
     }
   });
 
+  it("keeps runtime assets in a per-key state directory while the runtime root stays per run", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-remote-runtime-asset-state-"));
+    cleanupDirs.push(rootDir);
+    const workspaceDir = path.join(rootDir, "workspace");
+    const homeDir = path.join(rootDir, "home");
+    await mkdir(workspaceDir, { recursive: true });
+    await mkdir(homeDir, { recursive: true });
+    const spec = {
+      host: "127.0.0.1",
+      port: 2222,
+      username: "fixture",
+      remoteWorkspacePath: "/app",
+      remoteCwd: "/app",
+      privateKey: "PRIVATE KEY",
+      knownHosts: "KNOWN HOSTS",
+      strictHostKeyChecking: true,
+    };
+    const remoteHomes: string[] = [];
+    for (const runId of ["run-a", "run-b"]) {
+      const prepared = await prepareRemoteManagedRuntime({
+        spec,
+        runId,
+        adapterKey: "codex",
+        workspaceLocalDir: workspaceDir,
+        assetStateKey: "task-issue-1",
+        assets: [{ key: "home", localDir: homeDir }],
+      });
+      expect(prepared.runtimeRootDir).toBe(`/app/.paperclip-runtime/runs/${runId}/workspace/.paperclip-runtime/codex`);
+      expect(prepared.assetDirs.home).toBe("/app/.paperclip-runtime/state/task-issue-1/codex/home");
+      const call = vi.mocked(syncDirectoryToSsh).mock.calls.at(-1) as unknown as [{ remoteDir: string }];
+      remoteHomes.push(call[0].remoteDir);
+    }
+    expect(remoteHomes).toEqual([
+      "/app/.paperclip-runtime/state/task-issue-1/codex/home",
+      "/app/.paperclip-runtime/state/task-issue-1/codex/home",
+    ]);
+  });
+
   it("restores runtime assets without restoring an in-place SSH workspace", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-remote-runtime-assets-only-"));
     cleanupDirs.push(rootDir);
