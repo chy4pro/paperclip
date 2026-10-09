@@ -2141,3 +2141,19 @@ The next hosted image build exports its exact image-owned controller pack and
 Linux binary with checksums, avoiding any local Docker pull. The changed bridge
 closures and Rust binary require new independent cloud fixtures and live proof
 before credentials are admitted to the revised runtime.
+
+### 2026-10-09 native sidecar API accounting handoff
+
+Review exposed a production-path gap: the native sidecar advertised token
+receipts without supplying the owned receipt callback, and its event sanitizer
+also omitted that authority. A direct API turn could fail when draining the
+extension, or lose its verified counters at the native boundary. The sidecar
+now captures one receipt per turn, passes it into terminal accounting and
+preserves the closed receipt through sanitization.
+
+Six credential-free tests execute the production sidecar turn admission, pump
+and sanitizer with a deterministic native host. They cover complete and partial
+Claude/OpenAI receipts, duplicate rejection and exclusion of credential-bearing
+receipts. This is simulated boundary proof, not paid API qualification. The
+prior hosted build and clean npm consumer passed at `e025ff228`; that image
+predates this sidecar correction and must be replaced for live API admission.
