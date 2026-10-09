@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { executionFailureRetryCount } from "../../server/src/services/execution-recovery-attempt.js";
+import { executionFailureRetryCount } from "../../server/src/modules/run-retry/index.js";
 import { legacyDispositionEpisode, decideLegacyContinuation, type LegacyContinuationInput } from "../../server/src/services/recovery/legacy-continuation.js";
 import { observe } from "./observe.js";
 

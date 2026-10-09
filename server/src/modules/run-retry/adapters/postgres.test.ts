@@ -94,6 +94,13 @@ describePostgres("run-retry postgres adapter", () => {
     const { companyId, agentId } = await seedCompany();
     const runId = randomUUID();
     const issueId = randomUUID();
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      title: "Retry fixture",
+      status: "in_progress",
+      assigneeAgentId: agentId,
+    });
     await db.insert(heartbeatRuns).values({
       id: runId,
       companyId,
@@ -101,16 +108,11 @@ describePostgres("run-retry postgres adapter", () => {
       invocationSource: "automation",
       status: "failed",
       finishedAt: now,
+      scopeKind: "issue",
+      issueId,
       contextSnapshot: { issueId },
     });
-    await db.insert(issues).values({
-      id: issueId,
-      companyId,
-      title: "Retry fixture",
-      status: "in_progress",
-      assigneeAgentId: agentId,
-      executionRunId: runId,
-    });
+    await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
     if (!run) throw new Error("The source run is missing.");
     return { companyId, agentId, runId, issueId, run };
@@ -165,6 +167,14 @@ describePostgres("run-retry postgres adapter", () => {
     const wakes = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.runId, runs[0]!.id));
     expect(wakes).toHaveLength(1);
     expect(wakes[0]?.status).toBe("queued");
+  });
+
+  it("copies the source run scope and issue to the retry run", async () => {
+    const source = await seedSource();
+    const result = await makeAdapter().scheduleRetry(writerInput(source));
+    expect(result.outcome).toBe("scheduled");
+    const [retry] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.retryOfRunId, source.runId));
+    expect(retry).toMatchObject({ scopeKind: "issue", issueId: source.issueId });
   });
 
   it("checks agent invokability for the retry company", async () => {

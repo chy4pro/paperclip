@@ -61,9 +61,12 @@ export type RunRetryEffect =
 export type RunRetryRun = {
   id: string;
   companyId: string;
+  scopeKind: "company" | "issue";
+  issueId: string | null;
   errorCode: string | null;
   contextSnapshot: Record<string, unknown> | null;
   resultJson: Record<string, unknown> | null;
+  runnerProfileJson?: Record<string, unknown> | null;
   scheduledRetryAttempt: number | null;
   scheduledRetryReason: string | null;
   scheduledRetryAt: Date | null;
@@ -73,6 +76,7 @@ export type RunRetryAgent = {
   companyId: string;
   name: string;
   adapterType: string;
+  adapterConfig?: Record<string, unknown> | null;
 };
 
 export type ScheduleRunRetryInput<Run, Agent> = {

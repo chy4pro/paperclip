@@ -49,9 +49,9 @@ function readTransientRecovery(run: RunRetryRun) {
   };
 }
 
-function taskKeyForRetry(context: Record<string, unknown>): string | null {
+function taskKeyForRetry(context: Record<string, unknown>, issueId: string | null): string | null {
   return readNonEmptyString(context.taskKey) ?? readNonEmptyString(context.taskId) ??
-    readNonEmptyString(context.issueId) ??
+    issueId ??
     (readNonEmptyString(context.wakeSource) === "timer" ? "__heartbeat__" : null);
 }
 
@@ -62,10 +62,24 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
   resolveSessionBeforeForWakeup: (agent: Agent, taskKey: string | null) => Promise<string | null>;
   resolveResponsibleUserIdForRunContext: (run: Run, context: Record<string, unknown>) => Promise<string | null>;
   isLegacyReconciliationBlocked: (run: Run) => Promise<boolean>;
+  hasConversationContinuationPolicy: (result: Run["resultJson"]) => boolean;
   normalizeRetryContext: (context: Record<string, unknown>) => Record<string, unknown>;
 }) {
   return async (input: ScheduleRunRetryInput<Run, Agent>): Promise<ScheduleRunRetryOutcome<Run>> => {
     const { run, agent, now, retryReason, wakeReason } = input;
+    // A retry inherits the durable authorization scope of its source run. Do
+    // not promote an untrusted or legacy contextSnapshot.issueId into a new
+    // issue binding: that could either violate the FK or misclassify history.
+    const issueId = run.scopeKind === "issue" ? run.issueId : null;
+    if (parseObject(agent.adapterConfig).provider === "openai_dot" ||
+      parseObject(parseObject(parseObject(run.runnerProfileJson).nativeExecutionInput).provider).kind === "openai_dot") {
+      return {
+        outcome: "not_scheduled",
+        reason: "Dot external execution must be reconciled before a new assignment; Paperclip cannot confirm its external stop.",
+        issueId,
+        effects: [],
+      };
+    }
     const hardExclusion = decideHardRetryExclusion({
       errorCode: run.errorCode,
       hasChatCompletionDeliveryIds: Array.isArray(run.contextSnapshot?.chatCompletionDeliveryIds) &&
@@ -76,7 +90,7 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
         outcome: "not_scheduled",
         reason: hardExclusion.reason,
         ...("errorCode" in hardExclusion ? { errorCode: hardExclusion.errorCode } : {}),
-        issueId: readNonEmptyString(run.contextSnapshot?.issueId),
+        issueId,
         effects: [],
       };
     }
@@ -98,7 +112,6 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
     });
     const transientRetryNotBefore = transientRecovery?.retryNotBefore ?? null;
     const contextSnapshot = parseObject(run.contextSnapshot);
-    const issueId = readNonEmptyString(contextSnapshot.issueId);
 
     if (!baseSchedule) {
       const exhaustion = { retryReason, scheduledRetryAttempt: consumedAttempts, maxAttempts };
@@ -123,7 +136,7 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
         outcome: "not_scheduled",
         reason: "Reconcile the previous execution before retrying; safe provider recovery is unavailable.",
         errorCode: "legacy_execution_requires_reconciliation",
-        issueId: readNonEmptyString(run.contextSnapshot?.issueId),
+        issueId,
         effects: [],
       };
     }
@@ -145,7 +158,7 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
     const schedule = applyRetryNotBeforeOverride(baseSchedule, transientRetryNotBefore, now);
     const requiresIssueGate =
       run.errorCode === "workspace_git_scan_timeout" || run.errorCode === "workspace_git_scan_saturated" ||
-      (run.resultJson?.workspaceRestoreFailure !== "restore_unsafe_archive" && run.resultJson?.conversationContinuation === "continue_conversation_v1") ||
+      deps.hasConversationContinuationPolicy(run.resultJson) ||
       retryReason === AI_CONNECTION_BUSY_RETRY_REASON || retryReason === AI_CONNECTION_POOL_WAIT_RETRY_REASON ||
       retryReason === MAX_TURN_CONTINUATION_RETRY_REASON || retryReason === INTERACTION_CONTINUATION_INFRA_RETRY_REASON;
     if (requiresIssueGate) {
@@ -161,7 +174,7 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
       }
     }
 
-    const sessionBefore = await deps.resolveSessionBeforeForWakeup(agent, taskKeyForRetry(contextSnapshot));
+    const sessionBefore = await deps.resolveSessionBeforeForWakeup(agent, taskKeyForRetry(contextSnapshot, issueId));
     const interactionContinuationPayload = retryReason === INTERACTION_CONTINUATION_INFRA_RETRY_REASON
       ? {
           mutation: "interaction",
@@ -175,8 +188,11 @@ export function createScheduleRunRetry<Run extends RunRetryRun, Agent extends Ru
       ? parseObject(parseObject(run.resultJson).workspaceValidation) : null;
     const shouldQuarantineWorkspaceForRetry = workspaceValidationRetryPayload !== null && Object.keys(workspaceValidationRetryPayload).length > 0;
     const failureRetries = executionFailureRetryCount(run);
+    const contextWithoutIssueId = { ...contextSnapshot };
+    delete contextWithoutIssueId.issueId;
     const retryContextSnapshot = deps.normalizeRetryContext({
-      ...contextSnapshot,
+      ...contextWithoutIssueId,
+      ...(issueId ? { issueId } : {}),
       executionRetryAccounting: accountingForScheduledRetry(run, retryReason, schedule.attempt),
       retryOfRunId: run.id,
       wakeReason,

@@ -409,6 +409,8 @@ export function createPostgresRunRetryAdapter(db: Db, host: RunRetryAdapterHost)
               id: scheduledRunId,
               companyId: companyId,
               agentId: run.agentId,
+              scopeKind: run.scopeKind,
+              issueId,
               invocationSource: "automation",
               triggerDetail: "system",
               status: "scheduled_retry",

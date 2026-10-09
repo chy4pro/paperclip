@@ -91,6 +91,7 @@ import type {
   UpdateToolMcpGateway,
 } from "@paperclipai/shared";
 import {
+  getConnectableAppDefinition,
   isGitHubConnectorProfileId,
   isGoogleWorkspaceConnectorProfileId,
   type GitHubConnectorProfileId,
@@ -108,7 +109,7 @@ import { RAILWAY_SSH_SECRET_PATH, runRailwaySshCommand } from "./railway-ssh.js"
 import {
   initializeMcpHttpSession,
   getMcpHttpSession,
-  forgetMcpHttpSessions,
+  forgetMcpHttpSession,
   readMcpHttpResponse,
   McpHttpResponseError,
   mcpHttpRequestHeaders,
@@ -468,6 +469,21 @@ const BUILTIN_LOCAL_STDIO_RUNTIME_TEMPLATES: Record<
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function connectionRequiresMcpSession(connection: { config: unknown }): boolean {
+  const config = asRecord(connection.config);
+  if (config?.mcpSessionRequired === true) return true;
+  const sourceTemplateKey = typeof config?.sourceTemplateKey === "string"
+    ? config.sourceTemplateKey
+    : null;
+  const connectionMethodKey = typeof config?.connectionMethodKey === "string"
+    ? config.connectionMethodKey
+    : null;
+  if (!sourceTemplateKey || !connectionMethodKey) return false;
+  return getConnectableAppDefinition(sourceTemplateKey)?.methods.some((method) =>
+    method.key === connectionMethodKey && method.defaults?.mcpSessionRequired === true
+  ) ?? false;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -5625,7 +5641,7 @@ export function createToolGatewayService(
   function responseTooLargeError() {
     return new ToolGatewayHttpError(
       502,
-      "Remote MCP response exceeded the gateway size limit",
+      "Remote MCP response exceeded the gateway size limit. Request a smaller result, for example a narrower query or a smaller page size.",
       "mcp_remote_response_too_large",
       { maxBytes: MAX_REMOTE_MCP_RESPONSE_BYTES },
     );
@@ -5958,6 +5974,9 @@ export function createToolGatewayService(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ms);
     timer.unref?.();
+    // The cached MCP session this call used, so a failure resets only this
+    // identity's session and leaves other agents on the connection alone.
+    let mcpSession: { scope: string; headers: Record<string, string>; sessionId: string } | undefined;
     try {
       const dispatchRemote = (target: string, init: RequestInit) =>
         options.remoteHttpRequest
@@ -5969,6 +5988,27 @@ export function createToolGatewayService(
               // letting the tighter default cut a legitimately slow tool short.
               responseTimeoutMs: ms,
             });
+      const requireExplicitRetryAfterOAuthRefresh = async (refreshedResponse: Response): Promise<never> => {
+        // The provider rejected this dispatch, but automatic replay is unsafe:
+        // a server can apply a request before returning 401. A caller retry
+        // starts a fresh credential-scoped MCP session and dispatches once.
+        if (mcpSession) forgetMcpHttpSession(mcpSession);
+        await refreshedResponse.body?.cancel().catch(() => undefined);
+        execution.response = {
+          httpStatus: refreshedResponse.status,
+          contentType: refreshedResponse.headers.get("content-type"),
+          bodySizeBytes: 0,
+          upstreamRequestId:
+            refreshedResponse.headers.get("x-request-id") ??
+            refreshedResponse.headers.get("traceparent"),
+        };
+        throw new ToolGatewayHttpError(
+          409,
+          "The provider rejected the saved OAuth token, which has now been refreshed. Retry the action explicitly; the original call was not replayed.",
+          "oauth_refreshed_retry_required",
+          { connectionId: connection.id, catalogEntryId: entry.id, execution },
+        );
+      };
       if (isRailwayEndpoint(connection.config.url) && normalizeRailwayToolName(entry.toolName).startsWith(RAILWAY_TOOL_PREFIX)) {
         if (!isRailwayConnection(connection) || connection.config.railwayApiStatus !== "available") {
           throw new ToolGatewayHttpError(422, "Railway API access is not verified. Refresh actions or reconnect this Railway connection.", "railway_api_not_verified");
@@ -5999,9 +6039,10 @@ export function createToolGatewayService(
         };
       }
       let requestHeaders = headers;
-      if (connection.config.mcpSessionRequired === true) {
+      if (connectionRequiresMcpSession(connection)) {
+        const scope = `${connection.id}:grant:${grant.id}:actor:${session.agentId}:${endpoint}`;
         requestHeaders = await getMcpHttpSession({
-          scope: `${connection.id}:grant:${grant.id}:actor:${session.agentId}:${endpoint}`,
+          scope,
           send: (init) =>
             dispatchRemote(endpoint, {
               ...init,
@@ -6011,6 +6052,8 @@ export function createToolGatewayService(
           headers,
           requestId,
         });
+        const sessionId = new Headers(requestHeaders).get("mcp-session-id");
+        if (sessionId) mcpSession = { scope, headers, sessionId };
       }
       // The guard runs inside this call and the connection is pinned to the
       // address it approved, so an operator-supplied hostname cannot be rebound
@@ -6060,24 +6103,7 @@ export function createToolGatewayService(
         });
         headers = builtHeaders.headers;
         headerSummary = builtHeaders.summary;
-        response = await dispatchRemote(endpoint, {
-          ...requestInit,
-          headers: mcpHttpRequestHeaders(headers),
-        });
-        if (response.status === 401) {
-          await db
-            .update(connectionGrants)
-            .set({
-              status: "needs_reauthorization",
-              updatedAt: new Date(options.now?.() ?? Date.now()),
-            })
-            .where(
-              and(
-                eq(connectionGrants.id, grant.id),
-                eq(connectionGrants.companyId, connection.companyId),
-              ),
-            );
-        }
+        await requireExplicitRetryAfterOAuthRefresh(response);
       }
       if (
         response.status === 401 &&
@@ -6100,10 +6126,7 @@ export function createToolGatewayService(
         });
         headers = builtHeaders.headers;
         headerSummary = builtHeaders.summary;
-        response = await dispatchRemote(endpoint, {
-          ...requestInit,
-          headers: mcpHttpRequestHeaders(headers),
-        });
+        await requireExplicitRetryAfterOAuthRefresh(response);
       }
       if (
         response.status === 401 &&
@@ -6140,16 +6163,13 @@ export function createToolGatewayService(
         });
         headers = builtHeaders.headers;
         headerSummary = builtHeaders.summary;
-        response = await dispatchRemote(endpoint, {
-          ...requestInit,
-          headers: mcpHttpRequestHeaders(headers),
-        });
+        await requireExplicitRetryAfterOAuthRefresh(response);
       }
       const sessionExpired = response.status === 404 && new Headers(requestHeaders).has("mcp-session-id");
       if (sessionExpired) {
         // The next explicit call initializes again. Never replay a tools/call
         // automatically: the failed call may have changed app data.
-        forgetMcpHttpSessions(connection.id);
+        if (mcpSession) forgetMcpHttpSession(mcpSession);
       }
       const body = response.ok
         ? JSON.stringify(await readMcpHttpResponse(response, requestId, {
@@ -6209,11 +6229,6 @@ export function createToolGatewayService(
       try {
         payload = JSON.parse(body);
       } catch {
-        await markRemoteConnectionHealth(
-          connection,
-          "error",
-          "Remote MCP server returned invalid JSON.",
-        );
         throw new ToolGatewayHttpError(
           502,
           "Remote MCP server returned invalid JSON",
@@ -6296,9 +6311,14 @@ export function createToolGatewayService(
         const failure = error.reason === "too_large" ? responseTooLargeError()
           : error.reason === "malformed_response" ? malformedRemoteMcpResponse()
           : new ToolGatewayHttpError(502, "Remote MCP server returned invalid JSON", "mcp_remote_invalid_json");
-        await markRemoteConnectionHealth(connection, "error", failure.message);
+        // These describe one response body, not the connection: the server
+        // answered with HTTP 2xx. Marking the connection unhealthy would hide
+        // every tool, and only a successful call restores health.
+        // The reader may have cancelled the stream partway, and the server can
+        // then drop its session. Start a fresh session on the next call.
+        if (mcpSession) forgetMcpHttpSession(mcpSession);
         throw new ToolGatewayHttpError(failure.status, failure.message, failure.reasonCode, {
-          connectionId: connection.id, catalogEntryId: entry.id, execution,
+          ...failure.details, connectionId: connection.id, catalogEntryId: entry.id, execution,
         });
       }
       if (error instanceof RailwayError) {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createScheduleRunRetry } from "./use-cases.js";
-import type { RunRetryWriterResult } from "./types.js";
+import type { RunRetryWriterInput, RunRetryWriterResult } from "./types.js";
 
 const now = new Date("2026-01-01T00:00:00.000Z");
 
@@ -8,6 +8,7 @@ function fixture() {
   const calls: string[] = [];
   const run = {
     id: "run-1", companyId: "company-1", errorCode: null as string | null,
+    scopeKind: "issue" as "issue" | "company", issueId: "issue-1" as string | null,
     contextSnapshot: { issueId: "issue-1" } as Record<string, unknown>,
     resultJson: null as Record<string, unknown> | null,
     scheduledRetryAttempt: null as number | null,
@@ -16,7 +17,7 @@ function fixture() {
   };
   const agent = { companyId: "company-1", name: "Agent", adapterType: "codex_local" };
   const retryRun = { ...run, id: "run-2", scheduledRetryAttempt: 1, scheduledRetryAt: new Date(now.getTime() + 30_000) };
-  const writer = { scheduleRetry: vi.fn(async (): Promise<RunRetryWriterResult<typeof run>> => {
+  const writer = { scheduleRetry: vi.fn(async (_input: RunRetryWriterInput<typeof run>): Promise<RunRetryWriterResult<typeof run>> => {
     calls.push("writer");
     return { outcome: "scheduled" as const, run: retryRun, reusedExisting: false };
   }) };
@@ -45,12 +46,43 @@ function fixture() {
     writer, invokability, evaluateScheduledRetryGate,
     resolveSessionBeforeForWakeup, resolveResponsibleUserIdForRunContext,
     isLegacyReconciliationBlocked, normalizeRetryContext,
+    hasConversationContinuationPolicy: () => false,
   });
   const input = { run, agent, now, random: () => 0.5, retryReason: "transient_failure", wakeReason: "transient_failure_retry" };
   return { calls, run, agent, retryRun, writer, invokability, evaluateScheduledRetryGate, resolveSessionBeforeForWakeup, resolveResponsibleUserIdForRunContext, isLegacyReconciliationBlocked, normalizeRetryContext, scheduleRunRetry, input };
 }
 
 describe("createScheduleRunRetry", () => {
+  it("stops a retry when the provider uses external Dot execution", async () => {
+    const test = fixture();
+    Object.assign(test.agent, { adapterConfig: { provider: "openai_dot" } });
+    const result = await test.scheduleRunRetry(test.input);
+    expect(result).toMatchObject({ outcome: "not_scheduled", issueId: "issue-1" });
+    expect(test.writer.scheduleRetry).not.toHaveBeenCalled();
+  });
+
+  it("uses the source run issue scope when context names a different issue", async () => {
+    const test = fixture();
+    test.run.contextSnapshot.issueId = "issue-from-context";
+    const result = await test.scheduleRunRetry(test.input);
+    expect(result.outcome).toBe("scheduled");
+    expect(test.writer.scheduleRetry).toHaveBeenCalledWith(expect.objectContaining({
+      issueId: "issue-1",
+      retryContextSnapshot: expect.objectContaining({ issueId: "issue-1" }),
+    }));
+  });
+
+  it("does not bind a company retry to an issue from context", async () => {
+    const test = fixture();
+    test.run.scopeKind = "company";
+    test.run.issueId = null;
+    const result = await test.scheduleRunRetry(test.input);
+    expect(result.outcome).toBe("scheduled");
+    expect(test.writer.scheduleRetry).toHaveBeenCalledWith(expect.objectContaining({ issueId: null }));
+    const retryContext = test.writer.scheduleRetry.mock.calls[0]?.[0].retryContextSnapshot;
+    expect(retryContext).not.toHaveProperty("issueId");
+  });
+
   it("keeps the completion outbox outside the retry ports", async () => {
     const test = fixture();
     test.run.contextSnapshot.chatCompletionDeliveryIds = ["delivery-1"];

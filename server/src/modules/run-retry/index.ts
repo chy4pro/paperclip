@@ -26,6 +26,7 @@ export function createRunRetry(db: Db, deps: RunRetryDeps) {
       invokability: adapter,
       evaluateScheduledRetryGate: deps.evaluateScheduledRetryGate,
       isLegacyReconciliationBlocked: deps.isLegacyReconciliationBlocked,
+      hasConversationContinuationPolicy: deps.adapterHost.hasConversationContinuationPolicy,
       normalizeRetryContext: deps.normalizeRetryContext,
       resolveSessionBeforeForWakeup: deps.resolveSessionBeforeForWakeup,
       resolveResponsibleUserIdForRunContext: deps.resolveResponsibleUserIdForRunContext,
