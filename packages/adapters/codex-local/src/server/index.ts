@@ -70,6 +70,30 @@ function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// Session params carry a nested remoteExecution identity for remote targets;
+// execute.ts compares it on the next heartbeat, so it must survive the codec.
+// Only the keys the identity comparison uses are kept (never privateKey/knownHosts).
+const REMOTE_EXECUTION_IDENTITY_KEYS = [
+  "transport",
+  "host",
+  "port",
+  "username",
+  "remoteCwd",
+  "providerKey",
+  "environmentId",
+  "leaseId",
+] as const;
+
+function readRemoteExecutionIdentity(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const identity: Record<string, unknown> = {};
+  for (const key of REMOTE_EXECUTION_IDENTITY_KEYS) {
+    if (record[key] !== undefined && record[key] !== null) identity[key] = record[key];
+  }
+  return Object.keys(identity).length > 0 ? identity : null;
+}
+
 export const sessionCodec: AdapterSessionCodec = {
   deserialize(raw: unknown) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
@@ -81,12 +105,15 @@ export const sessionCodec: AdapterSessionCodec = {
       readNonEmptyString(record.workdir) ??
       readNonEmptyString(record.folder);
     const workspaceId = readNonEmptyString(record.workspaceId) ?? readNonEmptyString(record.workspace_id);
+    const remoteExecution =
+      readRemoteExecutionIdentity(record.remoteExecution) ?? readRemoteExecutionIdentity(record.remote_execution);
     const repoUrl = readNonEmptyString(record.repoUrl) ?? readNonEmptyString(record.repo_url);
     const repoRef = readNonEmptyString(record.repoRef) ?? readNonEmptyString(record.repo_ref);
     return {
       sessionId,
       ...(cwd ? { cwd } : {}),
       ...(workspaceId ? { workspaceId } : {}),
+      ...(remoteExecution ? { remoteExecution } : {}),
       ...(repoUrl ? { repoUrl } : {}),
       ...(repoRef ? { repoRef } : {}),
     };
@@ -100,12 +127,15 @@ export const sessionCodec: AdapterSessionCodec = {
       readNonEmptyString(params.workdir) ??
       readNonEmptyString(params.folder);
     const workspaceId = readNonEmptyString(params.workspaceId) ?? readNonEmptyString(params.workspace_id);
+    const remoteExecution =
+      readRemoteExecutionIdentity(params.remoteExecution) ?? readRemoteExecutionIdentity(params.remote_execution);
     const repoUrl = readNonEmptyString(params.repoUrl) ?? readNonEmptyString(params.repo_url);
     const repoRef = readNonEmptyString(params.repoRef) ?? readNonEmptyString(params.repo_ref);
     return {
       sessionId,
       ...(cwd ? { cwd } : {}),
       ...(workspaceId ? { workspaceId } : {}),
+      ...(remoteExecution ? { remoteExecution } : {}),
       ...(repoUrl ? { repoUrl } : {}),
       ...(repoRef ? { repoRef } : {}),
     };
