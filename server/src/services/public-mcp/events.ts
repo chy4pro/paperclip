@@ -242,7 +242,8 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
         .orderBy(asc(dotMailboxItems.id)).limit(100);
       for (const { item, assignment } of rows) {
         const wanted = item.kind === "readiness_challenge" ? !!b.challengeHash && !!b.challengeExpiresAt && b.challengeExpiresAt > new Date(now())
-          : item.kind === "authority_revoked" || !!assignment && ["offered", "accepted"].includes(assignment.status) && assignment.expiresAt > new Date(now());
+          : item.kind === "authority_revoked" || (item.kind !== "follow_up" || item.references.consumed !== true)
+            && !!assignment && ["offered", "accepted"].includes(assignment.status) && assignment.expiresAt > new Date(now());
         await db.insert(deliveries).values({ subscriptionId: s.id, mailboxItemId: item.id, nextAttemptAt: new Date(now()),
           event: wanted ? { eventId: "evt_dot_" + item.id + "_" + s.startsAt.getTime(), name: names[4], timestamp: new Date(now()).toISOString(),
             data: { companyId: b.companyId, bindingId: b.id, bindingGeneration: b.generation, mailboxItemId: item.id, kind: item.kind }, cursor: null } : {},

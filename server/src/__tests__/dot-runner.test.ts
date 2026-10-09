@@ -30,7 +30,9 @@ import { setupRunnerPrpWebSocketServer } from "../realtime/runner-prp-ws.js";
 import { finalizeNativeRun } from "../services/native-runtime/native-run-finalizer.js";
 import { resolveHeartbeatNativeRuntimeMode, resolveNativeRuntimeMode } from "../services/native-runtime/runtime-mode.js";
 import { heartbeatService } from "../services/heartbeat.js";
-import { publishActiveDotComment } from "../services/dot-assignment-follow-up.js";
+import { consumeDotHistoryReceipt, publishActiveDotComment } from "../services/dot-assignment-follow-up.js";
+import { createPostgresWakeQueueAdapter } from "../modules/wake-queue/adapters/postgres.js";
+import { createReleaseIssueExecution } from "../modules/wake-queue/application/use-cases.js";
 
 describe("durable Dot Runner integration", () => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -310,17 +312,98 @@ describe("durable Dot Runner integration", () => {
       expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, f.agent.id))).toHaveLength(1);
       const wakes = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agent.id));
       expect(wakes).toHaveLength(1);
-      expect(wakes[0]).toMatchObject({ status: "coalesced", runId: run.id });
+      expect(wakes[0]).toMatchObject({ status: "deferred_issue_execution", runId: null, finishedAt: null });
       const mailbox = await db.select().from(dotMailboxItems).where(and(eq(dotMailboxItems.assignmentId, assignment.id), eq(dotMailboxItems.kind, "follow_up")));
       expect(mailbox).toHaveLength(1);
       expect(mailbox[0]!.references).toEqual({ assignmentId: assignment.id, commentId: comment!.id });
       expect(f.received.filter(event => event.data?.kind === "follow_up")).toHaveLength(1);
+      await f.broker.mailbox(f.principal);
+      expect((await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, wakes[0]!.id)))[0]?.status).toBe("deferred_issue_execution");
+      const [receipt] = await db.insert(dotRunnerOperations).values({ companyId: f.company.id,
+        assignmentId: assignment.id, requestId: randomUUID(), digest: "history", status: "completed",
+        command: { action: "tool", input: { name: "get_task_history", arguments: {} } },
+        outcome: { status: "completed", isError: false, result: { comments: [{ id: comment!.id }] } } }).returning();
+      await consumeDotHistoryReceipt(db, receipt!);
+      await consumeDotHistoryReceipt(db, receipt!);
+      expect((await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, wakes[0]!.id)))[0]).toMatchObject({ status: "coalesced", runId: run.id });
+      expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, f.agent.id))).toHaveLength(1);
     } finally {
       await db.update(heartbeatRuns).set({ status: "cancelled" }).where(eq(heartbeatRuns.id, run.id));
       await db.update(dotRunnerAssignments).set({ status: "fenced" }).where(eq(dotRunnerAssignments.id, assignment.id));
       await f.events.unsubscribe(f.principal, f.subscription); await f.events.stop();
     }
   }, 30000);
+
+  it.each(["finish before delivery", "read before wake admission", "partial history", "failed history"])(
+    "preserves comment delivery when %s", async scenario => {
+      const f = await fixture(), { run, assignment } = await offeredWork(f);
+      await db.update(companies).set({ defaultResponsibleUserId: f.userId }).where(eq(companies.id, f.company.id));
+      const [task] = await db.insert(issues).values({ companyId: f.company.id, title: "Dot comment race",
+        status: "in_progress", assigneeAgentId: f.agent.id, responsibleUserId: f.userId,
+        executionRunId: run.id, checkoutRunId: run.id }).returning();
+      await db.update(heartbeatRuns).set({ nativeIssueId: task!.id, issueId: task!.id, status: "running",
+        contextSnapshot: { issueId: task!.id }, runtimeMode: "native", nativeSessionId: assignment.normalizedSessionId }).where(eq(heartbeatRuns.id, run.id));
+      await db.update(dotRunnerAssignments).set({ status: "accepted" }).where(eq(dotRunnerAssignments.id, assignment.id));
+      const comments = await db.insert(issueComments).values([1, 2].map(index => ({ companyId: f.company.id,
+        issueId: task!.id, authorUserId: f.userId, body: "Input " + index }))).returning();
+      const [history] = await db.insert(dotRunnerOperations).values({ companyId: f.company.id,
+        assignmentId: assignment.id, requestId: randomUUID(), digest: "history", status: "completed",
+        command: { action: "tool", input: { name: "get_task_history", arguments: {} } },
+        outcome: { status: "completed", isError: scenario === "failed history",
+          result: { comments: [{ id: comments[0]!.id }] } } }).returning();
+      try {
+        if (scenario === "read before wake admission") await consumeDotHistoryReceipt(db, history!);
+        for (const comment of comments) await heartbeatService(db).wakeup(f.agent.id, {
+          source: "assignment", triggerDetail: "system", reason: "issue_commented",
+          payload: { issueId: task!.id, commentId: comment.id }, requestedByActorType: "user", requestedByActorId: f.userId,
+          contextSnapshot: { issueId: task!.id, wakeCommentId: comment.id, wakeReason: "issue_commented" },
+        });
+        if (scenario === "finish before delivery") {
+          const requestId = randomUUID();
+          await db.insert(dotRunnerOperations).values({ companyId: f.company.id, assignmentId: assignment.id,
+            requestId, digest: "finish", command: { action: "finish" }, status: "admitted" });
+          const port = f.broker.port({ binding: { companyId: f.company.id, agentId: f.agent.id, runId: run.id }, provider: { binding: f.snapshot } });
+          await port.settle({ sourceEventId: randomUUID(), payload: { requestId,
+            binding: { ...f.snapshot, runId: run.id, normalizedSessionId: assignment.normalizedSessionId,
+              turnId: assignment.turnId, assignmentRevision: assignment.revision }, outcome: { status: "completed" } } } as Parameters<typeof port.settle>[0]);
+          await f.events.tick();
+          expect(f.received.filter(event => event.data?.kind === "follow_up")).toHaveLength(0);
+        }
+        await consumeDotHistoryReceipt(db, history!);
+        let wakes = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agent.id));
+        expect(wakes).toHaveLength(scenario === "read before wake admission" ? 2 : 1);
+        const pending = wakes.find(wake => wake.status === "deferred_issue_execution")!;
+        expect(pending.payload?._paperclipWakeContext).toMatchObject({ wakeCommentIds:
+          ["finish before delivery", "failed history"].includes(scenario)
+            ? comments.map(comment => comment.id) : [comments[1]!.id] });
+        if (scenario === "read before wake admission") expect(wakes.find(wake => wake.payload?.commentId === comments[0]!.id)?.status).toBe("coalesced");
+        if (scenario === "finish before delivery") {
+          await db.update(heartbeatRuns).set({ status: "succeeded", finishedAt: new Date() }).where(eq(heartbeatRuns.id, run.id));
+          await db.update(issues).set({ status: "done" }).where(eq(issues.id, task!.id));
+          const release = createReleaseIssueExecution({ issueLock: createPostgresWakeQueueAdapter(db, {
+            resolveResponsibleUserId: async () => f.userId,
+            getRoutineEnv: async () => ({ routineId: null, env: null, responsibleUserId: null }),
+            resolveSessionBeforeForWakeup: async () => null,
+          }), recovery: {
+            escalateStrandedAssignedIssue: async () => { throw new Error("unexpected escalation"); },
+            escalateStrandedRecoveryIssueInPlace: async () => { throw new Error("unexpected escalation"); },
+          } });
+          await release({ companyId: f.company.id, runId: run.id, now: new Date(), suppressImmediateRecovery: true });
+          await release({ companyId: f.company.id, runId: run.id, now: new Date(), suppressImmediateRecovery: true });
+          const runs = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, f.agent.id));
+          expect(runs).toHaveLength(2);
+          expect(runs.find(row => row.id !== run.id)).toMatchObject({ status: "queued",
+            contextSnapshot: { wakeCommentIds: comments.map(comment => comment.id) } });
+          wakes = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agent.id));
+          expect(wakes).toHaveLength(1);
+          expect(wakes[0]).toMatchObject({ status: "queued", runId: runs.find(row => row.id !== run.id)!.id });
+        }
+      } finally {
+        await db.update(heartbeatRuns).set({ status: "cancelled" }).where(eq(heartbeatRuns.agentId, f.agent.id));
+        await db.update(dotRunnerAssignments).set({ status: "fenced" }).where(eq(dotRunnerAssignments.id, assignment.id));
+        await f.events.unsubscribe(f.principal, f.subscription); await f.events.stop();
+      }
+    }, 30000);
 
   it.each(["foreign comment", "self comment", "revoked binding", "fenced assignment", "expired assignment", "prior generation"])(
     "refuses active comment delivery for %s", async kind => {

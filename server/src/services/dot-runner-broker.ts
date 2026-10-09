@@ -5,6 +5,7 @@ import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { setAgentAvatarSchema, type SetAgentAvatarInput } from "@paperclipai/shared";
 import { setAgentProfileAvatar } from "./agent-profile-avatar.js";
+import { consumeDotHistoryReceipt } from "./dot-assignment-follow-up.js";
 import { getStorageService } from "../storage/index.js";
 import { agents, companies, heartbeatRuns, issues, agentWakeupRequests, nativeRunFinalizations, mcpOauthGrants,
   mcpEventSubscriptions, dotAgentBindings as bindings, dotRunnerAssignments as assignments,
@@ -275,7 +276,11 @@ function createBroker(db: Db) {
       const deadline = Date.now() + 1500;
       while (Date.now() < deadline) {
         const [receipt] = await db.select().from(operations).where(eq(operations.id, row.id));
-        if (receipt?.outcome) { await authorizeAssignment(principal, assignmentId, true); return receipt.outcome; }
+        if (receipt?.outcome) {
+          await authorizeAssignment(principal, assignmentId, true);
+          await consumeDotHistoryReceipt(db, receipt);
+          return receipt.outcome;
+        }
         await new Promise(r => setTimeout(r, 50));
       }
       return { status: "pending", assignmentId, requestId, message: "Use paperclip_dot_operation_status or retry with the same requestId. Do not create a new request ID." };
@@ -404,6 +409,7 @@ function createBroker(db: Db) {
       await authorizeAssignment(principal, assignmentId, true);
       const [row] = await db.select().from(operations).where(and(eq(operations.assignmentId, assignmentId), eq(operations.requestId, requestId), eq(operations.companyId, principal.grant.companyId)));
       if (!row) throw fail("Operation does not exist.");
+      await consumeDotHistoryReceipt(db, row);
       return row.outcome ?? { status: row.status, requestId };
     },
     async controlAck(principal: McpPrincipal, assignmentId: string, requestId: string) {

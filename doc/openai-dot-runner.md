@@ -434,7 +434,7 @@ Recovery reads the checkpoint from the owning execution target and validates run
 
 An active managed Dot bridge allows a five-minute controller reconnect gap. Recovery must still prove the same sandbox lease, Runner process generation, durable session, and assignment; it cannot substitute a new process or Dot conversation. A verified shutdown receipt is authoritative even when the remote process monitor has no exit code. Remote process birth comes from the sandbox, never a colliding PID on the controller.
 
-A normal task comment for an accepted Dot assignment is recorded once in its durable mailbox and its wake receipt points to the existing run. It does not queue another execution after completion. Explicit fresh-session requests, interactions, and idle task admission retain their existing wake policy.
+A normal task comment for an accepted Dot assignment is recorded once in its durable mailbox and its wake receipt points to the existing run. The receipt stays deferred until Dot receives a successful `get_task_history` result containing that exact comment ID. A webhook or inbox reference alone does not consume it. If the assignment finishes first, normal queued admission preserves the unread comment for the next turn, including after controller recovery. Comments already read during the assignment do not execute again. Explicit fresh-session requests, interactions, and idle task admission retain their existing wake policy.
 
 ### Managed qualification
 
