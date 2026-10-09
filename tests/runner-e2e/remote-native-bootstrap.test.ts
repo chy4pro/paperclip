@@ -12,7 +12,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 function harness(timeoutMs = REMOTE_FIXTURE_MIN_SETUP_BUDGET_MS + 18_000) {
   const order: string[] = [];
   const issue = { id: "issue", companyId: "company", assigneeAgentId: "agent" };
-  const run = { id: "run", companyId: "company", agentId: "agent", status: "running", executionStage: "preparing" };
+  const run = { id: "run", companyId: "company", agentId: "agent", status: "running", executionStage: "preparing", runtimeMode: "native", nativePhase: "provider_running" };
   const leases = [{ id: "lease", heartbeatRunId: "run", issueId: "issue", status: "active", providerLeaseId: "sandbox" }];
   const api = { get: vi.fn(async (path: string) => path === "/api/issues/issue" ? issue : path === "/api/heartbeat-runs/run" ? run : leases) };
   const fixture = {
@@ -67,6 +67,8 @@ it("keeps async completion immediate with a private sentinel and no delivery wai
   expect(action).toContain("attempt to finish immediately without calling read_bash or another waiting tool");
   expect(action).toContain("Do not modify fixture code, manufacture its result, or start another command.");
   expect(action).toContain("private diagnostic sentinel, not a requested file deliverable");
+  expect(action).toContain("Do not publish it. Do not attach it.");
+  expect(explicitlyRequestsFileOutput(`${action}\nAttach a downloadable report.txt file.`)).toBe(true);
   expect(action).toContain("evidence [], verification []");
   expect(action).not.toContain("register_deliverable");
 });
@@ -126,6 +128,13 @@ it("waits through queued admission without publishing early", async () => {
   });
   await h.bootstrap.bindAndRelease(h.request);
   expect(count).toBe(2); expect(h.fixture.publishAction).toHaveBeenCalledTimes(1);
+});
+
+it.each(["provider_running", "observed"])("admits a native %s run while its legacy stage stays preparing", async nativePhase => {
+  const h = harness(); h.bootstrap.prompt("native-ready"); h.run.nativePhase = nativePhase;
+  await expect(h.bootstrap.bindAndRelease(h.request)).resolves.toBe(h.fixture);
+  expect(h.run.executionStage).toBe("preparing");
+  expect(h.bind).toHaveBeenCalledTimes(1); expect(h.fixture.publishAction).toHaveBeenCalledTimes(1);
 });
 
 it.each(["", "x".repeat(16385)])("rejects empty or over-bound action after closing only its observer", async action => {

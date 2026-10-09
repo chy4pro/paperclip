@@ -53,14 +53,15 @@ export const idleAdmissionMiddleware: RequestHandler = (req, res, next) => {
 // preserving router objects and error-handler arity. Waiting only for finish
 // loses async work after res.json(), including the disconnected-client case.
 // Keep this adapter isolated and exercise it against real Express in tests.
-type Layer = { handle: Function & { stack?: Layer[] }; route?: { stack: Layer[] } };
+type Layer = { handle: Function & { stack?: Layer[] }; route?: { stack: Layer[] } | string };
 export function trackIdleRequestHandlers(app: Application): void {
   const seen = new Set<Layer>();
   const visit = (stack: Layer[], route = false) => {
     for (const layer of stack) {
       if (seen.has(layer)) continue;
       seen.add(layer);
-      if (layer.route && Array.isArray(layer.route.stack)) { visit(layer.route.stack, true); continue; }
+      // Connect/Vite mount paths are strings; Express Route stacks are arrays.
+      if (layer.route && typeof layer.route !== "string" && Array.isArray(layer.route.stack)) { visit(layer.route.stack, true); continue; }
       if (Array.isArray(layer.handle.stack)) { visit(layer.handle.stack); continue; }
       const original = layer.handle;
       if (original === idleAdmissionMiddleware) continue;

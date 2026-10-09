@@ -85,3 +85,6 @@ test-results/
 # Copilot assets are generated from pinned platform packages during installation.
 /packages/paperclip-runner/provider-assets/
 /server/provider-assets/
+
+# Local native Runner test/session state
+.paperclip-runner-prp/

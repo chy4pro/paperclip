@@ -1,27 +1,42 @@
 # GitHub Copilot production readiness
 
-Current release checklist, updated 2026-10-08 (America/Chicago).
+Current release checklist, updated 2026-10-09 (America/Chicago).
 
-## Current release gate: v33
+## Current shipping gate: cloud build and v34 qualification
 
-The frozen application source is `024e1422f9c7b43ff1b083e7d8a25e1969dc4acf`; native artifacts come from `941fbcb664a885eea713e732edc10ac133c62238`. Copilot **1.0.88**, exact **gpt-5.6-luna**, profile **v33**, and `sha256:482c4e997b4690c7e4a5375dd035560aaad69000f8f5291904d76f8c3a88284a` identify this campaign. Master baseline is `0ac194450a48a407450921a16c3ef8684dcb85ca`. Earlier results below remain historical.
+Frozen **v33 qualification is complete**: all **20/20 Product cells**, all **7/7 protocol cases** (46 assertions), and both ordinary installed local and Daytona canaries pass. These results retain their exact source, fixture, runtime, model and image identities. They do not qualify different runtime bytes.
 
-The reviewed server follow-up is `50d54d78e552869cae154d88ade68063191a547e`. It preserves explicitly selected remote environments under managed-only policy and resolves forced Kubernetes before Copilot admission. All 63 focused regressions, server typecheck and server build pass. It changes neither qualified runtime/profile/image inputs nor the campaign's local and Daytona execution policies. Its ordinary installed local canary now passes separately; existing live results retain their measured source revision. The normal user path connects a personal saved token, selects the exact model, saves and reopens configuration, passes metadata Test without a prompt, completes one task, downloads the exact 30-byte artifact, and retires all owned processes without qualification overrides.
+The current candidate incorporates master `57e977be72f37dcf31acff64b3e5dcbb64a92cd0`. It preserves mainline Pi/Cursor admission and retains the later Copilot permission, receipt, token and recovery repairs. Copilot remains **1.0.88**, with exact **gpt-5.6-luna** selected for qualification. Copilot **v34** is `sha256:6dde98a9dbadf22f17ca28f133dbe2a65fa199827741190f569704e44bdc20ed`. The changed bound sources require fresh qualification; v33 remains historical release evidence.
 
-The denial-fixture follow-up is `dc5ebe3f92d405e284b096f5add797864bb0f74e`. It retains a terminal first observed while saving the pre-Stop receipt, then checks again for an earlier Stop before dispatch. All 82 settlement regressions and Product typecheck pass. Case definitions and grading assertions are unchanged; native source, profile and image content identity are unchanged. Earlier live results retain their measured fixture/source revision.
-
-| Current gate | Result |
+| Current gate | State |
 |---|---|
-| Runner protocol | **7/7 pass**, 46 assertions, context-before-action included, cleanup confirmed |
-| Product local | **10/10 pass**, including attached command, denial, pending-permission Stop, provider death, warm continuity and all five core workflows; saved-token grants and exact profile/model verified |
-| Product Daytona | **0/10 current passes**; exact v33 publication approval pending; attached-command cell runs first |
-| Platform install/startup | Actual installed ARM64, x64 under Rosetta, and Linux x64 under Docker emulation initialize and exit cleanly; native Daytona still pending |
-| Authenticated metadata | Packaged runtime discovers 19 models including the exact qualification model; no prompt |
-| Ordinary user path | Fresh normal package installation, saved-token setup, metadata Test, exact task completion/download and cleanup pass locally on reviewed source without qualification overrides; native Daytona remains pending |
-| Current image | Credential scan covered 225,852 files with zero selected credential matches. Tag `copilot-qualification-22fd2a8ae3414eee317e`; OCI index `sha256:65fc4f30c15b3d744534ce3d7240dfbf3d3ff081da6d51180bd89f2802bd6e56`; not published |
-| CI / review / shipping | Runtime and regression heads passed CI and fresh 5/5 review. Setup has fresh 5/5 review. Qualification requires fresh CI/review after the denial-fixture repair; pending trusted-runner selection has now completed. Separate code-owner approval and shipped canary remain required |
+| Current-master integration | Merge conflicts resolved; migration collision uses additive `0320_copilot_defaults.sql`; historical identities retained separately |
+| Build and contracts | Full `pnpm build`, recursive typecheck, shared/database builds and token gates pass |
+| Focused regressions | 224 transport/recovery cases and 123 saved-token connection cases pass; installer contract and remote fixture checks pass; remaining full-suite validation is pending |
+| Cloud image | Build-only OCI artifact mode retains the exact frozen lock, content ID and digest before publication; build, scan and publication pending |
+| Live qualification | Freeze source, v34 profile, model, provider pack, case definitions and image; run exact 20 Product cells and seven protocol cases; verify both ordinary installed canaries |
+| Shipping | Fresh current-head CI/review, separate code-owner approval, normal merge and shipped-build canary pending |
 
-No automatic behavior retries occurred. Retained failures include the v32 permission-target defect, pre-provider Vite startup failures, and the private eval admission mismatch. The first ordinary canary completed but wrote Markdown escape backslashes, producing 34 bytes instead of 30; it remains failed. One changed definition gave the same expected contents as exact hexadecimal bytes and passed. Original grades remain unchanged. The reconciled allowance has **$35.86 remaining** after these canaries; provider USD stays unknown and attributed to GitHub. No budget or billing settings were reset. The current machine-readable checklist is [2026-10-08-copilot-qualification-v33.json](2026-10-08-copilot-qualification-v33.json).
+No unchanged CI rerun remains available for the old v33 run `37829278179`: attempt 2 interrupted server shard 6 after a runner shutdown signal, without an observed assertion failure. The integrated candidate receives fresh CI. Future Docker images build in the cloud. No v34 live result or production rollout is claimed yet.
+
+## Completed frozen v33 qualification
+
+The original application source is `024e1422f9c7b43ff1b083e7d8a25e1969dc4acf`; reviewed application execution is `50d54d78e552869cae154d88ade68063191a547e`; native artifacts are `941fbcb664a885eea713e732edc10ac133c62238`. Daytona's reviewed controller/fixture source is `5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638`, including fixture repair `dc5ebe3f92d405e284b096f5add797864bb0f74e`. Source equivalence proofs retain the selected policies and case definitions; no original grade was relabeled. Copilot **1.0.88**, exact **gpt-5.6-luna**, profile **v33**, and `sha256:482c4e997b4690c7e4a5375dd035560aaad69000f8f5291904d76f8c3a88284a` identify the native campaign.
+
+| Gate | Result |
+|---|---|
+| Runner protocol | **7/7 pass**, 46 assertions, context-before-action and cleanup included |
+| Product local | **10/10 pass**, saved-token grants and exact profile/model verified |
+| Product Daytona | **10/10 pass**, native process/sandbox retirement independently verified |
+| Platform install/startup | Actual installed ARM64, x64 under Rosetta and Linux x64 under Docker emulation pass; native Linux runs pass on Daytona |
+| Ordinary user paths | Both fresh normal installed local and Daytona paths pass without qualification overrides: saved personal token, exact model, save/reopen, metadata-only Test, one task/final response, accepted normalized receipt and downloaded artifact |
+| Ordinary remote cleanup | Exact 32 downloaded/synced bytes; native commands exited before completion; all **42** owned sandboxes independently absent. Two intentional setup/runtime-test archives were deleted after verifying exact owned identities |
+| Image publication | Approved, published and anonymously verified. Tag `copilot-qualification-22fd2a8ae3414eee317e`; index `sha256:65fc4f30c15b3d744534ce3d7240dfbf3d3ff081da6d51180bd89f2802bd6e56`; Linux manifest `sha256:9606c290372884ee74438408e8115088320979c8614a3dbd9d77be2b548a896e`; scan found zero selected credentials across 225,852 files |
+| Shipping | Pending current-master reconciliation/new-build qualification, CI/review, code-owner approval, normal merge and shipped canary |
+
+No automatic behavior retries occurred. The first Daytona attached-command attempt rejected a controller pack before native provider start: extraction omitted seven empty Cursor directories. Image files and Copilot assets matched. Restoring only the verified empty directories fixed the prerequisite; production offline pack validation and the explicit second attempt passed. The original failure remains. Other retained failures include v32 target aliasing, pre-provider startup/admission failures and the first ordinary local file's Markdown escape bytes. The changed hexadecimal local definition passed without relabeling that failure.
+
+Authenticated account reconciliation leaves **$70.50** within the existing approved window, with no active paid hold. Historical result mismatches and missing-closure compensation keep their full contingencies; infrastructure holds remain. Provider per-run USD stays unknown and GitHub-attributed. No billing controls or budget ceiling changed. The machine-readable record is [2026-10-08-copilot-qualification-v33.json](2026-10-08-copilot-qualification-v33.json).
 
 ## Historical v32 release attempt
 

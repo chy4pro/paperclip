@@ -89,6 +89,7 @@ export type NativeAcpxAgent = "pi" | "claude" | "codex" | "grok" | "cursor" | "c
 export type NativeCodexApprovalPolicy = "never" | "on-request" | "untrusted";
 export type NativeOpenCodePermissionMode = "allow" | "ask" | "deny";
 export type NativeAcpxPermissionMode = "approve-all" | "approve-paperclip" | "approve-reads" | "deny-all";
+export type NativeCursorMode = "agent" | "plan" | "ask";
 
 /** Decodable history; current immutable admission comes from the shared manifest. */
 export type NativeAcpxProfileVersion = AcpxProfileVersion;
@@ -132,6 +133,7 @@ export type NativeProviderConfig =
       model: string;
       permissionMode?: NativeAcpxPermissionMode;
       mode?: string;
+      piThinkingLevel?: "off" | "low" | "high" | "max";
       /** Present only in persisted v1-v3 inputs. */
       permissionPolicy?: "interactive";
       profile: NativeAcpxProfileSnapshot;
@@ -147,6 +149,7 @@ export type NativeProviderConfigV4 =
       model: string;
       permissionMode: NativeAcpxPermissionMode;
       mode?: string;
+      piThinkingLevel?: "off" | "low" | "high" | "max";
       profile: NativeAcpxProfileSnapshot;
     };
 
@@ -504,7 +507,7 @@ export function parseNativeExecutionInput(value: unknown): NativeExecutionInput 
       : provider.kind === "aws_agentcore"
         ? ["kind", "model", "agentCoreProfile", "maxEstimatedSessionCostUsd", "invocationLimits"]
       : provider.kind === "acpx"
-        ? ["kind", "agent", "model", isV4 ? "permissionMode" : "permissionPolicy", "profile", ...(isV4 ? ["mode"] : [])]
+        ? ["kind", "agent", "model", isV4 ? "permissionMode" : "permissionPolicy", "profile", "piThinkingLevel", ...(isV4 ? ["mode"] : [])]
       : provider.kind === "codex" && isV4
         ? ["kind", "model", "approvalPolicy", ...(isV5 ? ["reasoningEffort"] : [])]
         : provider.kind === "opencode" && isV4
@@ -624,6 +627,9 @@ export function parseNativeExecutionInput(value: unknown): NativeExecutionInput 
       invocationLimits: { maxIterations, maxOutputTokens, timeoutSeconds },
     };
   } else if (provider.kind === "acpx") {
+    if (provider.piThinkingLevel !== undefined && (provider.agent !== "pi" || (typeof provider.piThinkingLevel !== "string" || !["off", "low", "high", "max"].includes(provider.piThinkingLevel)))) {
+      throw new NativeExecutionInputError("input.provider.piThinkingLevel must be off, low, high, or max and is supported only for Pi");
+    }
     if (provider.mode !== undefined && !isProviderMode(provider.mode)) {
       throw new NativeExecutionInputError("input.provider.mode must be a bounded nonempty provider mode identifier");
     }
@@ -662,6 +668,9 @@ export function parseNativeExecutionInput(value: unknown): NativeExecutionInput 
     ) {
       throw new NativeExecutionInputError("input.provider.profile does not match the qualified ACPX v1 profile");
     }
+    if (provider.agent === "pi" && profile.agentProfileVersion >= 13 && provider.piThinkingLevel === undefined) {
+      throw new NativeExecutionInputError("input.provider.piThinkingLevel is required for Pi profile 13 or later");
+    }
     const runtimePackage = nullableText(profile.agentRuntimePackage, "input.provider.profile.agentRuntimePackage");
     const runtimeVersion = nullableText(profile.agentRuntimeVersion, "input.provider.profile.agentRuntimeVersion");
     if ((runtimePackage === null) !== (runtimeVersion === null)) {
@@ -675,6 +684,7 @@ export function parseNativeExecutionInput(value: unknown): NativeExecutionInput 
         ? { permissionMode: provider.permissionMode as NativeAcpxPermissionMode }
         : { permissionPolicy: "interactive" as const }),
       ...(provider.mode === undefined ? {} : { mode: provider.mode as string }),
+      ...(provider.piThinkingLevel === undefined ? {} : { piThinkingLevel: provider.piThinkingLevel as "off" | "low" | "high" | "max" }),
       profile: {
         driverKind: "acpx_runtime",
         protocolVersion: 1,

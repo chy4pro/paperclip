@@ -242,16 +242,7 @@ describe("buildPaperclipRunnerConfig", () => {
     expect(config).not.toHaveProperty("acpxAgent");
   });
 
-  it.each(["pi"])("rejects unavailable ACPX %s without selecting another provider", (acpxAgent) => {
-    expect(() => buildPaperclipRunnerConfig(makeValues({
-      adapterType: "paperclip_runner",
-      model: "explicit-provider-model",
-      adapterSchemaValues: {
-        provider: "acpx",
-        acpxAgent,
-      },
-    }))).toThrow(/is not enabled for production/);
-  });
+
 
   it.each(["agent", "plan", "ask"])("preserves Cursor's explicit model and %s mode", (mode) => {
     expect(buildPaperclipRunnerConfig(makeValues({
@@ -359,4 +350,12 @@ describe("buildPaperclipRunnerConfig", () => {
 
     expect(config).not.toHaveProperty("idleTimeoutMs");
   });
+});
+
+it.each([undefined, "off", "low", "high", "max"] as const)("builds exact Pi thinking configuration %s", piThinkingLevel => {
+  const config = buildPaperclipRunnerConfig(makeValues({ adapterType: "paperclip_runner", model: "openrouter/deepseek/deepseek-v4-flash-0731", adapterSchemaValues: { provider: "acpx", acpxAgent: "pi", piThinkingLevel } }));
+  expect(config.piThinkingLevel).toBe(piThinkingLevel ?? "low");
+});
+it("rejects silently clamped Pi aliases during configuration", () => {
+  expect(() => buildPaperclipRunnerConfig(makeValues({ adapterType: "paperclip_runner", adapterSchemaValues: { provider: "acpx", acpxAgent: "pi", piThinkingLevel: "medium" } }))).toThrow();
 });

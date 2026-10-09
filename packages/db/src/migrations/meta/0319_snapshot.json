@@ -1,5 +1,5 @@
 {
-  "id": "a780db47-713c-41f3-8c0a-37fa1c1adf59",
+  "id": "af0b2d33-956b-4b12-8d68-8b4e14c991b2",
   "prevId": "541f5e10-e2f3-44e1-b238-4d1cbfba61f2",
   "version": "7",
   "dialect": "postgresql",
@@ -4266,7 +4266,7 @@
       "checkConstraints": {
         "ai_connection_defaults_provider_check": {
           "name": "ai_connection_defaults_provider_check",
-          "value": "\"ai_connection_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google','github')"
+          "value": "\"ai_connection_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google')"
         },
         "ai_connection_defaults_method_check": {
           "name": "ai_connection_defaults_method_check",
@@ -4739,7 +4739,7 @@
       "checkConstraints": {
         "ai_provider_defaults_provider_check": {
           "name": "ai_provider_defaults_provider_check",
-          "value": "\"ai_provider_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google','github')"
+          "value": "\"ai_provider_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google')"
         }
       },
       "isRLSEnabled": false
@@ -56254,7 +56254,7 @@
           "name": "expires_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

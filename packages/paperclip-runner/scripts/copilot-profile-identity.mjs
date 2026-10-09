@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const fixture = resolve(root, "test/fixtures/copilot-profile-v33-identity.json");
+const fixture = resolve(root, "test/fixtures/copilot-profile-v34-identity.json");
 const historical = JSON.parse(readFileSync(resolve(root, "test/fixtures/copilot-profile-v12-identity.json"), "utf8"));
-const declaration = { ...historical.declaration, agentProfileVersion: 33 };
+const declaration = { ...historical.declaration, agentProfileVersion: 34 };
 delete declaration.permissionIdentitySourceSha256;
 const sources = {
   displayEventSourceSha256: "src/drivers/acpx/copilot-events.ts",
@@ -92,15 +92,15 @@ if (process.argv.includes("--check")) {
   manifest.profiles.copilot.agentProfileVersion = declaration.agentProfileVersion;
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
-const distributionPath = resolve(root, "scripts/build-copilot-distribution.mjs");
-const before = readFileSync(distributionPath, "utf8");
-const after = before.replace(/(?<=const PROFILE_DIGEST = ")sha256:[a-f0-9]{64}/, commandDigest);
-if (process.argv.includes("--check")) {
-  if (before !== after) throw new Error("Copilot identity is stale in build-copilot-distribution.mjs");
-} else writeFileSync(distributionPath, after);
-execFileSync(process.execPath, [resolve(root, "scripts/generate-acpx-profiles.mjs"),
-  ...(process.argv.includes("--check") ? ["--check"] : [])], { stdio: "inherit" });
+// The builder reads the active manifest; no duplicate digest literal is allowed.
+const distributionSource = readFileSync(resolve(root, "scripts/build-copilot-distribution.mjs"), "utf8");
+if (!distributionSource.includes("profiles.profiles.copilot.commandDigest")) {
+  throw new Error("Copilot distribution builder must use the active manifest identity");
+}
+// The shared generator validates this exact attestation before emitting admission.
 if (process.argv.includes("--check")) {
   if (readFileSync(fixture, "utf8") !== identity) throw new Error("Copilot source identity is stale");
 } else writeFileSync(fixture, identity);
+execFileSync(process.execPath, [resolve(root, "scripts/generate-acpx-profiles.mjs"),
+  ...(process.argv.includes("--check") ? ["--check"] : [])], { stdio: "inherit" });
 console.log(commandDigest);

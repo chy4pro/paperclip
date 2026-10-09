@@ -31,7 +31,6 @@ export interface CodexNativeSessionBackendOptions {
     startedAt: string;
   }) => Promise<void>;
   transportFactory?: (context?: {
-    /** Current run instructions are required before a recovered transport opens. */
     baseInstructions?: string;
     providerRecoveryPolicy?: PersistedNativeSession["providerRecoveryPolicy"];
     persistedSession?: Pick<
@@ -146,6 +145,7 @@ function createTransportBackedNativeSessionBackend(
   ];
 
   const baseInstructions = nativeSystemInstructions(input);
+  const transportFactory = options.transportFactory;
   return new HarnessDriverBackend(
     new CodexAppServerDriver({
       ...(input.provider.model ? { model: input.provider.model } : {}),
@@ -181,8 +181,8 @@ function createTransportBackedNativeSessionBackend(
       runnerInstanceId:
         options.runnerInstanceId ?? `paperclip-native-${input.binding.runId}`,
       onSpawn: options.onSpawn,
-      transportFactory: options.transportFactory
-        ? (context) => options.transportFactory!({ ...context, baseInstructions })
+      transportFactory: transportFactory
+        ? (context) => transportFactory({ ...context, baseInstructions })
         : undefined,
       dynamicTools: options.dynamicTools,
       dynamicToolHandler: options.dynamicToolHandler,

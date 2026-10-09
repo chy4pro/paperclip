@@ -3,10 +3,12 @@ import { verifyCopilotInstallation } from "./copilot-installation.js";
 import { verifyCursorInstallation } from "./cursor-installation.js";
 import { assertCursorWorkspacePolicy } from "./cursor-launch-policy.js";
 import { resolveQualifiedAcpxProfile, type QualifiedAcpxAgent, type QualifiedAcpxProfile } from "./qualified-profiles.js";
+import { verifyPiInstallation } from "./pi-installation.js";
 import { verifyQualifiedAcpxInstallation, type VerifiedAcpxInstallation } from "./installation-integrity.js";
 
 /** Closed build-owned registry. Provider branches add their pinned installations here. */
 export async function verifyAcpxProfileInstallation(profile: QualifiedAcpxProfile): Promise<VerifiedAcpxInstallation> {
+  if (profile.agent === "pi") return verifyPiInstallation(profile);
   if (profile.agent === "copilot") return verifyCopilotInstallation(profile);
   if (profile.agent === "cursor") {
     try { return await verifyCursorInstallation(profile); }

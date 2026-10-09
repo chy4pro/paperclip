@@ -51,6 +51,12 @@ for (const owner of ["runner", "server"]) {
         bundle: true, platform: "node", format: "esm", target: "node24",
         logLevel: "silent",
       });
+      if (owner === "server") {
+        // The public server owns a compiled sidecar beside the vendored verifier.
+        // This installer fixture does not execute the sidecar.
+        await mkdir(join(runtimeRoot, "cli"), { recursive: true });
+        await writeFile(join(runtimeRoot, "cli/acpx-runtime-sidecar.cjs"), "// installer fixture sidecar\n");
+      }
       const scriptRoot = owner === "server" ? join(root, "dist") : join(root, "scripts");
       await mkdir(scriptRoot, { recursive: true });
       for (const name of helpers) await cp(join(runnerRoot, "scripts", name), join(scriptRoot, name));

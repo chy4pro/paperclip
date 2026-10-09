@@ -77,6 +77,33 @@ describe("idle admission", () => {
       done.resolve();
       await new Promise(resolve => setImmediate(resolve));
       expect(idleWorkSnapshot().active).toBe(0);
+    } finally { await vite.close(); }
+  });
+
+  it("tracks real Vite middleware without confusing Connect mount paths with Express routes", async () => {
+    const { createServer } = await import("vite");
+    const vite = await createServer({
+      configFile: false,
+      appType: "custom",
+      server: { middlewareMode: true, hmr: false, watch: null },
+      optimizeDeps: { noDiscovery: true, include: [] },
+    });
+    const server = app(), done = deferred();
+    vite.middlewares.use("/vite-work", async (_req, res) => {
+      res.statusCode = 202;
+      res.end();
+      await done.promise;
+    });
+    server.use(vite.middlewares);
+    try {
+      expect(() => trackIdleRequestHandlers(server)).not.toThrow();
+      await request(server).get("/vite-work").expect(202);
+      expect(idleWorkSnapshot().active).toBe(1);
+      startTaskDrain({ purpose: "idle", ttlMs: 60_000 });
+      await request(server).get("/vite-work").expect(503);
+      done.resolve();
+      await new Promise(resolve => setImmediate(resolve));
+      expect(idleWorkSnapshot().active).toBe(0);
     } finally {
       done.resolve();
       await vite.close();

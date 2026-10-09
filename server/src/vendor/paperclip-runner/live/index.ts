@@ -11,3 +11,4 @@ export const validateCopilotMetadata = runner.validateCopilotMetadata;
 export const probeAcpxClaudeInstallation = runner.probeAcpxClaudeInstallation;
 export const probeAcpxGrokInstallation = runner.probeAcpxGrokInstallation;
 export const probeAcpxCursorInstallation = runner.probeAcpxCursorInstallation;
+export const probeAcpxPiInstallation = runner.probeAcpxPiInstallation;

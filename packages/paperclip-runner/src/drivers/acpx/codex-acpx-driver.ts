@@ -1,7 +1,9 @@
-import type { CopilotToolEvidence } from "./copilot-tool-evidence.js";
+import { type CopilotToolEvidence } from "./copilot-tool-evidence.js";
 import { isProviderMode } from "../../contracts/provider-mode.js";
 import { acpxProfileActivity, type AcpxActivityAdapter, type AcpxToolEvidence } from "./profile-activity.js";
+
 import { requireAcpxResponseDelivery } from "./response-delivery.js";
+import { createPiMessageProjection, piBoundaryClearsFinal, type PiProjectedMessageEvent } from "./pi-message-projection.js";
 import { acpxProfileClientCapabilities, bindAcpxExtensionTurn, validateAcpxRichEvent, createAcpxProfileExtensionAdapter, type AcpxExtensionInput } from "./profile-extensions.js";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -87,7 +89,7 @@ import {
 } from "./runtime-sandbox.js";
 
 import { AcpxTurnControlLedger, parseAcpxTurnControl, type AcpxTurnControlMode } from "./turn-controls.js";
-import { acpxUsageEstimateNotice, persistedAcpxTurnUsage } from "./usage-accounting.js";
+import { acpxUsageEstimateNotice, persistedAcpxTurnUsage, persistedCursorUsageNotice } from "./usage-accounting.js";
 
 const MAX_BUFFERED_EVENTS = 512;
 const TERMINAL_EVENT_RESERVE = 3;
@@ -146,6 +148,7 @@ export interface CodexAcpxDriverOptions {
   model: string;
   permissionMode?: NativeAcpxPermissionMode;
   mode?: string;
+  piThinkingLevel?: "off" | "low" | "high" | "max";
   providerPolicy?: { readOnly: boolean };
   runtimeContext?: OpenAcpxRuntimeHostOptions["runtimeContext"];
   systemInstructions?: string;
@@ -460,6 +463,7 @@ export class CodexAcpxDriver implements HarnessDriver {
         model: this.#options.model,
         permissionMode: this.#options.permissionMode ?? "approve-all",
         mode: this.#options.mode,
+        piThinkingLevel: this.#options.piThinkingLevel,
         providerPolicy: this.#options.providerPolicy,
         runtimeContext: this.#options.runtimeContext,
         systemInstructions: this.#options.systemInstructions,
@@ -1286,6 +1290,7 @@ class CodexAcpxSession implements HarnessSession {
         effectiveModel: identity.effectiveModel,
         permissionMode: identity.permissionMode,
         ...(identity.mode === undefined ? {} : { mode: identity.mode }),
+        ...(identity.piThinkingLevel === undefined ? {} : { piThinkingLevel: identity.piThinkingLevel }),
         providerLifetimeFenceCandidates:
           identity.providerLifetimeFenceCandidates,
       },
@@ -1455,7 +1460,8 @@ class CodexAcpxSession implements HarnessSession {
       let index = 0;
       const normalizeToolEvent =
         createAcpxToolEventNormalizer<AcpRuntimeEvent>();
-      const normalizeMessage = this.#agent === "grok"
+      const piMessages = this.#agent === "pi" ? createPiMessageProjection<AcpRuntimeEvent>() : null;
+      const normalizeMessage = piMessages ? piMessages.normalize : this.#agent === "grok"
         ? createGrokMessageNormalizer<AcpRuntimeEvent>() : (event: AcpRuntimeEvent) => event;
       for await (const event of turn.events) {
         toolEvidence?.tool(event);
@@ -1464,6 +1470,7 @@ class CodexAcpxSession implements HarnessSession {
         this.#mapRuntimeEvent(normalizeMessage(normalizeToolEvent(projected)), turnId, ++index);
       }
       const result = await turn.result;
+      if (result.status === "completed") piMessages?.settle();
       await drainExtensions();
       const usageAfter = await readUsageStatus(this.#host);
       // Diagnostic projection failures cannot replace the provider's terminal result.
@@ -1654,7 +1661,7 @@ class CodexAcpxSession implements HarnessSession {
   }
 
   #mapRuntimeEvent(
-    event: AcpRuntimeEvent,
+    event: PiProjectedMessageEvent<AcpRuntimeEvent>,
     turnId: string,
     index: number,
   ): void {
@@ -1666,7 +1673,8 @@ class CodexAcpxSession implements HarnessSession {
       const messageId = typeof event.messageId === "string" && event.messageId ? event.messageId : null;
       // The pinned Copilot mapper supplies actual native identity, including
       // empty starts. Unidentified session info/warnings remain activity only.
-      if (!isReasoning && (this.#agent !== "copilot" || messageId)) {
+      if (!isReasoning && !event.piMessageHistory && (this.#agent !== "copilot" || messageId)) {
+        if (piBoundaryClearsFinal(event)) this.#assistantText = "";
         if (messageId && this.#assistantMessageId && messageId !== this.#assistantMessageId) {
           if (this.#agent === "copilot" && this.#assistantText) {
             this.#emit("item.completed", { kind: "agentMessage", channel: "commentary", text: this.#assistantText },
@@ -2136,6 +2144,7 @@ function validateRecoverySnapshot(snapshot: PersistedHarnessSession): void {
         identity.permissionMode,
       )) ||
     (identity.mode !== undefined && !isProviderMode(identity.mode)) ||
+    (identity.piThinkingLevel !== undefined && !["off", "low", "high", "max"].includes(identity.piThinkingLevel)) ||
     !validProviderLifetimeFenceCandidates(
       identity.providerLifetimeFenceCandidates,
     )

@@ -12,7 +12,7 @@ export function resolveAcpxQualification(
   if (provider.kind !== "acpx" || !["copilot", "pi"].includes(provider.agent)) return undefined;
   // The server release declaration admits qualified Copilot into the frozen
   // SDK's explicit native transport slot. No operator environment is required.
-  // Pending Pi continues through the exact host-only qualification check below.
+  // Pi retains the mainline transport and qualification behavior below.
   if (provider.agent === "copilot" && PAPERCLIP_RUNNER_ACPX_PROFILES.some(profile => profile.value === "copilot" && profile.qualified)) {
     if (!provider.model || provider.model !== provider.model.trim() || ["auto", "default"].includes(provider.model.toLowerCase())) {
       throw new Error("GitHub Copilot requires an explicit available model ID");

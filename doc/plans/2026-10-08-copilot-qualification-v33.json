@@ -1,6 +1,6 @@
 {
   "schema": "paperclip.copilot.production-qualification/v33",
-  "updatedAt": "2026-10-08T19:04:43.055832+00:00",
+  "updatedAt": "2026-10-09T15:05:45.536425+00:00",
   "qualifiedApplicationSource": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
   "reviewedApplicationSource": "50d54d78e552869cae154d88ade68063191a547e",
   "runtimeArtifactSource": "941fbcb664a885eea713e732edc10ac133c62238",
@@ -103,7 +103,7 @@
   "product": {
     "localPassed": 10,
     "localSelected": 10,
-    "daytonaPassed": 0,
+    "daytonaPassed": 10,
     "daytonaSelected": 10,
     "cells": [
       {
@@ -115,10 +115,14 @@
       },
       {
         "selector": "native-active-stop.runner-acpx-copilot.daytona.pending-permission-stop",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:c97343873c4f6acd42d16c1f9a0142da2bcc005d32406e68311eddb482da695c",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-pending-stop-01",
+        "automaticRetries": 0
       },
       {
         "selector": "copilot-provider-death.runner-acpx-copilot.local.pending-permission-provider-death",
@@ -129,10 +133,14 @@
       },
       {
         "selector": "copilot-provider-death.runner-acpx-copilot.daytona.pending-permission-provider-death",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:583d2f1de67364578476203bdebc77d92257613ba6b46fc126668feb194997d1",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-provider-death-01",
+        "automaticRetries": 0
       },
       {
         "selector": "copilot-protection.runner-acpx-copilot.local.native-permission-deny-write",
@@ -150,17 +158,25 @@
       },
       {
         "selector": "copilot-protection.runner-acpx-copilot.daytona.native-permission-deny-write",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:c80efe711eb5b410edc840d4f3cda13d4f1d2a362d3c7525f8e82806ca0d8c7d",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-denied-write-01",
+        "automaticRetries": 0
       },
       {
         "selector": "copilot-protection.runner-acpx-copilot.daytona.attached-async-settlement",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:8ef732bb5d2823952cfeda7f1c8311d7de8f41ba0804299eec548332d8d16da5",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-attached-02",
+        "automaticRetries": 0
       },
       {
         "selector": "rich-acp-warm-continuity.runner-acpx-copilot.local.warm-three-turn",
@@ -171,10 +187,14 @@
       },
       {
         "selector": "rich-acp-warm-continuity.runner-acpx-copilot.daytona.warm-three-turn",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:0feab84de96215589db7b847fb915ed96b4246c48a25220cfbdfb8fe972e06c4",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-warm-continuity-01",
+        "automaticRetries": 0
       },
       {
         "selector": "extended-harnesses.runner-acpx-copilot.local.hello-complete",
@@ -213,38 +233,58 @@
       },
       {
         "selector": "extended-harnesses.runner-acpx-copilot.daytona.hello-complete",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:95758a04d9bce33ff2f230235770020ca12147d62de1616347118b696839dd8c",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-hello-01",
+        "automaticRetries": 0
       },
       {
         "selector": "extended-harnesses.runner-acpx-copilot.daytona.question-resume-complete",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:2d83e99f42cd641192899de8ac5385b31b9e47bab63d53cc76e66113f78725fd",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-question-01",
+        "automaticRetries": 0
       },
       {
         "selector": "extended-harnesses.runner-acpx-copilot.daytona.plan-approve-complete",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:5f8148676b0282a08f386c86cdd01bc40eb8141a75e0c8ba5964ce5c9776fbf7",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-plan-01",
+        "automaticRetries": 0
       },
       {
         "selector": "extended-harnesses.runner-acpx-copilot.daytona.structured-question-restart-resume",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:3d5004d1cb4ae4e947d4c025fb5b22398e932ea87b68d207d553341fb01f3595",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-controller-restart-01",
+        "automaticRetries": 0
       },
       {
         "selector": "extended-harnesses.runner-acpx-copilot.daytona.file-edit-validate",
-        "status": "pending",
-        "sourceRevision": null,
-        "resultSha256": null,
-        "cleanupConfirmed": null
+        "status": "passed",
+        "sourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+        "resultSha256": "sha256:0d80f636006d75ad1f7e371556a5207f403e4ac83ca0d73515e1f5abe0ca074e",
+        "cleanupConfirmed": true,
+        "applicationExecutableSourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+        "originalQualifiedApplicationSourceRevision": "024e1422f9c7b43ff1b083e7d8a25e1969dc4acf",
+        "attemptLabel": "copilot-v33-final-daytona-file-edit-01",
+        "automaticRetries": 0
       }
     ]
   },
@@ -253,14 +293,17 @@
     "indexDigest": "sha256:65fc4f30c15b3d744534ce3d7240dfbf3d3ff081da6d51180bd89f2802bd6e56",
     "knownCredentialMatches": 0,
     "filesScanned": 225852,
-    "published": false,
-    "exactApprovalPending": true,
-    "reviewedServerDeltaChangesImage": false
+    "published": true,
+    "exactApprovalPending": false,
+    "reviewedServerDeltaChangesImage": false,
+    "linuxManifestDigest": "sha256:9606c290372884ee74438408e8115088320979c8614a3dbd9d77be2b548a896e",
+    "anonymousPublicRetrievalVerified": true,
+    "publicationProofSha256": "sha256:1a3f274fad5f764e2c92c7f1116871d70e0a735801dad564fe5ad49c620aed95"
   },
   "installedPlatformSmokes": {
     "darwin-arm64": "passed",
     "darwin-x64": "passed under Rosetta",
-    "linux-x64": "passed under Docker emulation; native Daytona qualification pending"
+    "linux-x64": "installed smoke passed under Docker emulation; ten native Daytona cells and normal installed canary passed"
   },
   "reviewedSetupDelta": {
     "source": "50d54d78e552869cae154d88ade68063191a547e",
@@ -281,7 +324,7 @@
   },
   "canaries": {
     "ordinaryLocal": "passed on reviewed source",
-    "ordinaryDaytona": "pending",
+    "ordinaryDaytona": "passed on reviewed source",
     "ordinaryLocalEvidence": {
       "sourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
       "definition": "Exact hexadecimal bytes; same expected file and final response",
@@ -293,14 +336,43 @@
       "cleanupConfirmed": true,
       "qualificationOverrides": [],
       "previousFailureRetained": true
+    },
+    "ordinaryDaytonaEvidence": {
+      "sourceRevision": "50d54d78e552869cae154d88ade68063191a547e",
+      "qualificationSourceRevision": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+      "runtimeSourceRevision": "941fbcb664a885eea713e732edc10ac133c62238",
+      "profileVersion": 33,
+      "profileDigest": "sha256:482c4e997b4690c7e4a5375dd035560aaad69000f8f5291904d76f8c3a88284a",
+      "model": "gpt-5.6-luna",
+      "artifactBytes": 32,
+      "acceptedCompletionEvidence": true,
+      "finalResponseCount": 1,
+      "qualificationOverrides": [],
+      "nativeUsd": null,
+      "image": "ghcr.io/paperclipai/paperclip-daytona-runner@sha256:9606c290372884ee74438408e8115088320979c8614a3dbd9d77be2b548a896e",
+      "cleanup": {
+        "allOwnedSandboxesAbsent": true,
+        "ownedTaskSandboxAbsent": true,
+        "manualTestArchiveIntentionallyRetainedThenDeleted": true,
+        "loginDiscoverySandboxesAbsent": true,
+        "nativeRecordClosed": true,
+        "pendingRuntimeRequests": 0,
+        "providerExitUnconfirmed": false,
+        "ownedNativeControllerProcessesRemaining": [],
+        "liveRuns": 0
+      },
+      "proofSha256": "sha256:d12671b343c66437e389aa03dc7a785dca58cabb617b46566e10a7c74ed97b6e",
+      "receiptReceiverAcknowledged": true,
+      "metadataTestNoModelPrompt": true
     }
   },
   "budget": {
-    "remainingConservativeAllowanceUsd": 35.86,
+    "remainingConservativeAllowanceUsd": 70.5,
     "nativeUsd": null,
     "billingEntity": "github",
     "budgetReset": false,
-    "historicalAttemptsRetained": true
+    "historicalAttemptsRetained": true,
+    "aggregateAccountReconciliationRefreshedAt": "2026-10-09T15:03:43.221645+00:00"
   },
   "retainedFailedAttempts": [
     {
@@ -323,12 +395,17 @@
       "cause": "Provider copied Markdown underscore escapes into a 34-byte file instead of the requested 30 bytes",
       "runtimeRepair": null,
       "definitionFollowup": "One changed definition specified exact hexadecimal bytes; expected file and final response unchanged; follow-up passed; original failure and cleanup retained"
+    },
+    {
+      "attempt": "v33 native Daytona attached-command attempt 1",
+      "cause": "Controller docker-cp extraction omitted seven empty Cursor asset directories, so full provider-pack tree validation rejected before native provider start. Image files and Copilot tree matched.",
+      "runtimeRepair": null,
+      "artifactRepair": "Restore only the seven verified empty directories from the exact image. Production offline pack validator passed; explicit attached-command attempt 2 passed. Image/profile/source unchanged; original failure retained."
     }
   ],
   "releaseGates": [
-    "Exact v33 public image publication approval",
-    "Ten exact native Daytona Product cells",
-    "Ordinary installed Daytona canary on reviewed source",
+    "Resolve current master 57e977be72f37dcf31acff64b3e5dcbb64a92cd0 conflicts, preserving mainline Pi/Cursor and Copilot fixes",
+    "Bind changed runtime source to a new Copilot profile; cloud build and qualification required for changed bytes",
     "Current-head CI and fresh clean review",
     "Separate code-owner approval, normal merge and shipped canary"
   ],
@@ -354,5 +431,21 @@
       "tests/runner-e2e/copilot-protection-flow.ts": "sha256:b396a29ed3f40c398591d6687798a31234c24f94753c5c048b831a84b7fef8c7",
       "tests/runner-e2e/copilot-protection-settlement.test.ts": "sha256:bdbe4bb254ddfdfd0983a164e81a6b9e33c6f79c14d653ef2446a4f6c9f61a83"
     }
+  },
+  "reviewedQualificationControllerSource": "5f9b5e2043c4ec8e5cad667eaa4afbb09f1a9638",
+  "frozenV33QualificationComplete": true,
+  "currentMainlineShippingBlocker": {
+    "master": "57e977be72f37dcf31acff64b3e5dcbb64a92cd0",
+    "runtimePrMergeState": "DIRTY",
+    "qualificationCI": {
+      "runId": 37829278179,
+      "attempt": 2,
+      "serverShard": 6,
+      "testStep": "cancelled after runner shutdown signal",
+      "assertionFailureObserved": false,
+      "unchangedRerunsUsed": 1,
+      "allGreen": false
+    },
+    "v33EvidenceRelabeledAsNewBuild": false
   }
 }
