@@ -188,19 +188,36 @@ recovery of the existing App instead of a second creation. Direct webhook and
 manual existing-App recovery remain available. Connecting does not prove that
 an agent runtime can execute a review.
 
-### Bot mention acknowledgements
+### One editable response per request
 
-When Paperclip accepts an authorized mention on an issue or PR comment, the
-dedicated App adds an eyes reaction before the agent runs, including while work
-is queued. Description and review-summary mentions do not currently support
-this reaction acknowledgement.
+After accepting authorized GitHub work, Paperclip posts **Working on this…**
+before starting the agent. Issue and PR discussion comments use the same GitHub
+comment API; inline-review conversations receive an inline reply. Description
+mentions and automatic tasks also receive a working comment. No new eyes
+reaction is added; cleanup still handles receipts created by older versions.
 
-A confirmed comment or review-tool reply queues removal immediately, without
-waiting for the agent's native final. Durable cleanup retries independently and
-removes only this App's eyes on the original message. Uncertain publication
-retains the reaction until delivery is confirmed; terminal-run cleanup remains
-the fallback when no reply is published. Admission, repository restrictions and
-credential checks still apply before either reaction operation.
+The agent's `update_comment` tool edits the current request's working comment.
+It takes a body and a stable idempotency key, with no caller-selected comment ID
+or destination. Instructions encourage brief, factual progress updates during
+longer work. Distinct updates use distinct keys; retries reuse the same key.
+Progress does not complete an assessment or change a review check.
+
+The `comment` tool replaces that same comment with the final answer.
+`submit_review` replaces it with the allowed review summary; checks, inline
+findings and explicitly permitted formal reviews remain separate. Corrected
+assessments can update the summary again. Delayed progress cannot overwrite a
+final answer. Native final text stays in Paperclip and creates no extra comment.
+
+Receipts are bound to the company, App, task, accepted request and original
+runtime generation. The existing publication lease serializes edits, and
+App-owned markers recover uncertain creation without posting duplicates.
+Deleted or no-longer-owned comments are not recreated or edited. Failed runs
+update the same comment when no final reply is confirmed or unresolved. A run
+that ends without a final reply clears a remaining working state honestly.
+Repository restrictions, person authorization and governed tool checks remain
+in effect for edits. Existing disabled or quarantined tools stay disabled.
+Existing native sessions refresh incompatible tool checkpoints so the agent
+can see `update_comment`. The same Paperclip task and saved history remain.
 
 ### Explicit bot mentions and subscriptions
 

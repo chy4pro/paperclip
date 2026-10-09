@@ -8,6 +8,7 @@ import { runtimePublicOrigin } from "./cloud-runtime-identity.js";
 import { projectSafeChatPublicationText } from "./chat-publication-projection.js";
 import { githubReviewCheckService } from "./chat-github-checks.js";
 import { createHash } from "node:crypto";
+import { writeGitHubResponseComment } from "./chat-github-response-comments.js";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -530,11 +531,11 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
   ) {
     const source = await scope(session);
     const api = await client(source);
-    if (name === "comment") {
+    if (name === "comment" || name === "update_comment") {
       const parsed = commentSchema.parse(input);
       const actionId = await stage(
         source,
-        "comment",
+        name,
         parsed,
         parsed.idempotencyKey,
         invocationId,
@@ -1064,25 +1065,10 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
           };
           const operation = action.payload.operation;
           let receipt: Record<string, unknown>;
-          if (operation === "comment") {
-            const body = `${projectSafeChatPublicationText(String(action.payload.body))}\n\n${publicationMarker}`;
-            const route = source.replyId
-              ? `/pulls/${source.number}/comments`
-              : `/issues/${source.number}/comments`;
-            const prior = await findByMarker(route, publicationMarker);
-            await assertPublicationAuthority(
-              await scope(session, true),
-              action,
-            );
-            const posted =
-              prior ??
-              (await api.request<{ id: number; html_url: string }>(
-                source.replyId
-                  ? `/pulls/${source.number}/comments/${source.replyId}/replies`
-                  : route,
-                { method: "POST", body: { body } },
-              ));
-            receipt = { id: String(posted.id), url: posted.html_url };
+          if (operation === "comment" || operation === "update_comment") {
+            receipt = await writeGitHubResponseComment(db, source, api, lease, {
+              body: String(action.payload.body), final: operation === "comment", versionAt: action.createdAt,
+            }, async () => assertPublicationAuthority(await scope(session, true), action));
           } else if (operation === "formal_review") {
             const parsed = formalSchema.parse({
               body: action.payload.body,
@@ -1168,22 +1154,13 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
             );
             let summaryReceipt: { id: number; html_url: string } | null = null;
             if (source.policy.publishSummary) {
-              const previous = await findByMarker(
-                `/issues/${source.number}/comments`,
-                summaryMarker,
-              );
               const currentSummarySource = await currentHead(review.headSha);
               if (!currentSummarySource.policy.publishSummary)
                 throw forbidden("Summary publication is disabled");
-              summaryReceipt = await api.request(
-                previous
-                  ? `/issues/comments/${previous.id}`
-                  : `/issues/${source.number}/comments`,
-                {
-                  method: previous ? "PATCH" : "POST",
-                  body: { body: `${summary}\n\n${summaryMarker}` },
-                },
-              );
+              const published = await writeGitHubResponseComment(db, source, api, lease, {
+                body: `${summary}\n\n${summaryMarker}`, final: true, versionAt: action.createdAt,
+              }, async () => { await currentHead(review.headSha); });
+              summaryReceipt = { id: Number(published.id), html_url: published.url };
             }
             const severity = { info: 0, warning: 1, error: 2 };
             const receipts = { ...review.publicationReceipts };

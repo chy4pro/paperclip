@@ -632,3 +632,68 @@ all 61 cases. Server typecheck and build passed. Logs:
 `/private/tmp/github-bot-routing-build.log`. Repository-wide checks were not
 repeated; the previously recorded full-suite and current-head CI limitations
 remain. The retained test drive is running on port 3110 with this fix.
+
+## Editable GitHub responses — 2026-10-09
+
+Accepted GitHub requests now receive one App-owned working comment instead of
+a new eyes reaction. The assigned agent has `update_comment` for meaningful
+progress, then `comment` or `submit_review` replaces that same comment with the
+final answer or review summary. No caller-selected comment ID is accepted.
+Publication keeps its task, company, person, repository, credential and lease
+checks. Marker recovery handles an uncertain first creation without duplicates.
+Late progress cannot replace a final result. Terminal failure notices also edit
+the same comment; a turn with no final publication ends with a neutral notice.
+Existing disabled and quarantined tool decisions remain intact.
+
+The first live trial correctly edited its acknowledgement with the final answer,
+but the agent could not see the new progress tool. Its persisted Codex thread
+retained the old declarations despite resume advertising the current catalog.
+The native tool contract now rotates incompatible checkpoints while retaining
+the same Paperclip task and saved history. Native GitHub guidance explicitly
+permits provider progress edits and keeps semantic completion internal.
+
+After that fix, the [issue request](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6084847530)
+was posted at 16:20:52 UTC. The [single Gonzo response](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6084851008)
+kept comment ID `6084851008` through these observed revisions:
+
+| Time (UTC) | Response |
+|---|---|
+| 16:21:04 | Working on this… |
+| 16:21:30 | Choosing a joke… |
+| 16:21:33 | Joke selected; drawing the animal… |
+| 16:21:38 | Final joke and ASCII animal |
+
+Run `600d26e6-5065-414f-87eb-6b097192180a` succeeded. Both
+`update_comment` actions and the final `comment` action were processed.
+
+The [PR request](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/pull/7#issuecomment-6084888007)
+was posted at 16:23:23. Its [single Gonzo response](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/pull/7#issuecomment-6084890857)
+kept comment ID `6084890857`: working at 16:23:33, first progress at
+16:24:00, assessment-ready progress at 16:24:15, final 5/5 summary and
+ASCII animal at 16:24:20. [Check `113916193245`](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/runs/113916193245)
+completed successfully at 16:24:23 on current head
+`7f456f37881bf4bfe39692f897d60e1625521298`. Run
+`701f9606-21fc-4c04-a37d-858b510e929f` succeeded. Its two progress edits
+and review publication were processed. Banana filtered both source requests
+without retaining content and created no new reply or run.
+
+Evidence: `/private/tmp/github-editable-response-live-issue-v2.jsonl`,
+`/private/tmp/github-editable-response-live-pr.jsonl`,
+`/private/tmp/github-response-live-evidence.json`, and
+`/private/tmp/github-editable-response-pr-final-20261009.jpg`. These tests
+used the existing dedicated Apps, member identity, repository access and
+Daytona runtime. The retained test drive remains running on port 3110.
+
+Verification: 88 database-backed GitHub workflow cases passed, including issue,
+PR and inline replies, retries, lost acknowledgement receipts, corrected review
+assessments, revoked authority, ownership checks, failed turns and absence of
+new eyes reactions. The 69 related publication/event/policy units, 49 native
+checkpoint tests and 129 native prompt tests passed. Server and adapter-utils
+typechecks and builds passed. Logs: `/private/tmp/github-editable-response-integration.log`,
+`/private/tmp/github-editable-response-units.log`,
+`/private/tmp/github-response-session-tests.log`,
+`/private/tmp/github-response-runtime-prompt-tests.log`,
+`/private/tmp/github-editable-response-typecheck.log`, and
+`/private/tmp/github-editable-response-build.log`. Repository-wide checks were
+not repeated for this follow-up; prior full-suite and current-head CI limitations
+remain. This change adds no schema migration.

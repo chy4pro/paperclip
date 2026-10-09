@@ -1896,6 +1896,12 @@ describe("rebindNativeSessionCheckpoint", () => {
         "sha256:68a51d34e091c55ee5d0d2b563153454dd727d72db16e6a27c358d342ae489c9",
     },
     {
+      contract: "GitHub working-comment tools",
+      // Deployed v14 threads retain the catalog without update_comment.
+      retainedFingerprint:
+        "sha256:134a7dbd526179aff57f91c261bb653e83db51c20492efab5c26a5ce618792c8",
+    },
+    {
       contract: "task-bound human-input description",
       // Deployed v9 still advertises the generic mock-task question description.
       retainedFingerprint:
