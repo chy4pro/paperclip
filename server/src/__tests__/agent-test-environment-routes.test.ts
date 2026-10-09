@@ -122,13 +122,16 @@ vi.mock("../routes/ai-connections.js", async (importOriginal) => ({
   validateAiApiKey: mockValidateAiApiKey,
 }));
 const mockMarkAuthenticationFailed = vi.hoisted(() => vi.fn(async () => undefined));
+const mockSelectAiConnection = vi.hoisted(() => vi.fn(async (_input: unknown) => ({ connectionId: "copilot-connection", grantId: "copilot-grant" })));
+const mockAiCredential = vi.hoisted(() => vi.fn(async (_selection: unknown) => "synthetic-copilot-token"));
+const mockCopilotModels = vi.hoisted(() => vi.fn(async () => ({ models: [{ id: "gpt-5.6-luna", label: "GPT-5.6 Luna" }], promptSent: false })));
 const mockCopilotProbe = vi.hoisted(() => vi.fn(async () => ({ status: "verified", promptSent: false })));
 vi.mock("../services/copilot-connection-probe.js", async importOriginal => ({
-  ...(await importOriginal<object>()), probeCopilotExecutionTarget: mockCopilotProbe,
+  ...(await importOriginal<object>()), probeCopilotExecutionTarget: mockCopilotProbe, probeCopilotConnection: mockCopilotModels,
 }));
 vi.mock("../services/ai-connections.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/ai-connections.js")>()),
-  aiConnectionService: () => ({ markAuthenticationFailed: mockMarkAuthenticationFailed }),
+  aiConnectionService: () => ({ markAuthenticationFailed: mockMarkAuthenticationFailed, select: mockSelectAiConnection, credential: mockAiCredential }),
 }));
 
 function mockManagedRuntime(method: "api_key" | "subscription") {
@@ -257,6 +260,44 @@ describe("agent test-environment route", () => {
 
   afterEach(async () => {
     await unregisterTestAdapter("external_test");
+  });
+
+  it("lets a company task author discover Copilot models without agent configuration permission", async () => {
+    mockAccessService.decide.mockResolvedValue({ allowed: false, explanation: "No configuration grant" });
+    mockAccessService.canUser.mockResolvedValue(false);
+    mockAgentService.getById.mockResolvedValue({ id: "agent-1", companyId: "company-1" });
+    const response = await request(await createApp()).get("/api/companies/company-1/adapters/paperclip_runner/models")
+      .query({ provider: "acpx", acpxAgent: "copilot", agentId: "agent-1" });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([{ id: "gpt-5.6-luna", label: "GPT-5.6 Luna" }]);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(mockAccessService.decide).not.toHaveBeenCalled();
+    expect(mockSelectAiConnection).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      companyId: "company-1", userId: "local-board", agentId: "agent-1", runnerProvider: "acpx", acpxAgent: "copilot",
+      binding: { provider: "github", method: "api_key", mode: "responsible_user" }, allowUninstalledShared: false,
+    }));
+    expect(mockCopilotModels).toHaveBeenCalledExactlyOnceWith(expect.anything(), "company-1", "synthetic-copilot-token", null, undefined, expect.anything());
+  });
+
+  it("refuses model discovery for a foreign agent before selecting credentials", async () => {
+    mockAgentService.getById.mockResolvedValue({ id: "agent-foreign", companyId: "company-2" });
+    const response = await request(await createApp()).get("/api/companies/company-1/adapters/paperclip_runner/models")
+      .query({ provider: "acpx", acpxAgent: "copilot", agentId: "agent-foreign" });
+    expect(response.status).toBe(404);
+    expect(mockSelectAiConnection).not.toHaveBeenCalled();
+    expect(mockAiCredential).not.toHaveBeenCalled();
+    expect(mockCopilotModels).not.toHaveBeenCalled();
+  });
+
+  it("keeps saved connection access enforced before Copilot model probing", async () => {
+    const { forbidden } = await import("../errors.js");
+    mockAgentService.getById.mockResolvedValue({ id: "agent-1", companyId: "company-1" });
+    mockSelectAiConnection.mockRejectedValueOnce(forbidden("Saved connection access denied"));
+    const response = await request(await createApp()).get("/api/companies/company-1/adapters/paperclip_runner/models")
+      .query({ provider: "acpx", acpxAgent: "copilot", agentId: "agent-1" });
+    expect(response.status).toBe(403);
+    expect(mockAiCredential).not.toHaveBeenCalled();
+    expect(mockCopilotModels).not.toHaveBeenCalled();
   });
 
   it("tests the instance default sandbox when the agent inherits its environment", async () => {
