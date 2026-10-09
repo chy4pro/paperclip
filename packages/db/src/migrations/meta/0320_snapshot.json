@@ -1,5 +1,5 @@
 {
-  "id": "8e8297b3-1ae2-44d5-8841-f74637ce0395",
+  "id": "d6277736-9c05-4304-8d16-52dc0d2fbaef",
   "prevId": "af0b2d33-956b-4b12-8d68-8b4e14c991b2",
   "version": "7",
   "dialect": "postgresql",
@@ -3914,6 +3914,45 @@
           "notNull": true,
           "default": "'idle'"
         },
+        "lifecycle_state": {
+          "name": "lifecycle_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ready'"
+        },
+        "lifecycle_required_plugin_ids": {
+          "name": "lifecycle_required_plugin_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lifecycle_holds": {
+          "name": "lifecycle_holds",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "lifecycle_version": {
+          "name": "lifecycle_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lifecycle_error": {
+          "name": "lifecycle_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lifecycle_operation": {
+          "name": "lifecycle_operation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "reports_to": {
           "name": "reports_to",
           "type": "uuid",
@@ -4026,6 +4065,33 @@
         }
       },
       "indexes": {
+        "agents_lifecycle_work_idx": {
+          "name": "agents_lifecycle_work_idx",
+          "columns": [
+            {
+              "expression": "lifecycle_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "agents_company_status_idx": {
           "name": "agents_company_status_idx",
           "columns": [
@@ -4266,7 +4332,7 @@
       "checkConstraints": {
         "ai_connection_defaults_provider_check": {
           "name": "ai_connection_defaults_provider_check",
-          "value": "\"ai_connection_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google','github')"
+          "value": "\"ai_connection_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google')"
         },
         "ai_connection_defaults_method_check": {
           "name": "ai_connection_defaults_method_check",
@@ -4739,7 +4805,7 @@
       "checkConstraints": {
         "ai_provider_defaults_provider_check": {
           "name": "ai_provider_defaults_provider_check",
-          "value": "\"ai_provider_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google','github')"
+          "value": "\"ai_provider_defaults\".\"provider\" in ('anthropic','openai','openrouter','xai','google')"
         }
       },
       "isRLSEnabled": false

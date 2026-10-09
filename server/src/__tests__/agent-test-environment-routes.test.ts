@@ -117,10 +117,7 @@ vi.mock("../services/ai-connection-runtime.js", async (importOriginal) => ({
   },
 }));
 const mockValidateAiApiKey = vi.hoisted(() => vi.fn(async () => undefined));
-vi.mock("../routes/ai-connections.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../routes/ai-connections.js")>()),
-  validateAiApiKey: mockValidateAiApiKey,
-}));
+vi.mock("../services/ai-api-key-test.js", () => ({ validateAiApiKey: mockValidateAiApiKey }));
 const mockMarkAuthenticationFailed = vi.hoisted(() => vi.fn(async () => undefined));
 const mockSelectAiConnection = vi.hoisted(() => vi.fn(async (_input: unknown) => ({ connectionId: "copilot-connection", grantId: "copilot-grant" })));
 const mockAiCredential = vi.hoisted(() => vi.fn(async (_selection: unknown) => "synthetic-copilot-token"));
@@ -1112,4 +1109,10 @@ describe("agent test-environment route", () => {
       expect(testEnvironmentSpy.mock.calls[0]?.[0]?.executionTarget ?? null).toBeNull();
     });
   });
+});
+
+vi.mock("../services/agent-lifecycle.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/agent-lifecycle.js")>();
+  return { ...actual, createAgentLifecycle: () => ({
+  }) };
 });
