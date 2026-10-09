@@ -30,6 +30,7 @@ import { setupRunnerPrpWebSocketServer } from "../realtime/runner-prp-ws.js";
 import { finalizeNativeRun } from "../services/native-runtime/native-run-finalizer.js";
 import { resolveHeartbeatNativeRuntimeMode, resolveNativeRuntimeMode } from "../services/native-runtime/runtime-mode.js";
 import { heartbeatService } from "../services/heartbeat.js";
+import { publishActiveDotComment } from "../services/dot-assignment-follow-up.js";
 
 describe("durable Dot Runner integration", () => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -289,6 +290,58 @@ describe("durable Dot Runner integration", () => {
       expect(await db.select().from(dotMailboxItems).where(and(eq(dotMailboxItems.assignmentId, assignment.id), eq(dotMailboxItems.kind, "follow_up")))).toHaveLength(1);
     } finally { await f.events.unsubscribe(f.principal, f.subscription); await f.events.stop(); }
   });
+
+  it("coalesces a normal comment wake into the accepted Dot mailbox without a second run", async () => {
+    const f = await fixture(), { run, assignment } = await offeredWork(f);
+    const [task] = await db.insert(issues).values({ companyId: f.company.id, title: "Active Dot comment",
+      status: "in_progress", assigneeAgentId: f.agent.id, executionRunId: run.id, checkoutRunId: run.id }).returning();
+    await db.update(heartbeatRuns).set({ nativeIssueId: task!.id, issueId: task!.id, status: "running",
+      runtimeMode: "native", nativeSessionId: assignment.normalizedSessionId }).where(eq(heartbeatRuns.id, run.id));
+    await db.update(dotRunnerAssignments).set({ status: "accepted" }).where(eq(dotRunnerAssignments.id, assignment.id));
+    const [comment] = await db.insert(issueComments).values({ companyId: f.company.id, issueId: task!.id,
+      authorUserId: f.userId, body: "Continue the same assignment" }).returning();
+    try {
+      const admitted = await heartbeatService(db).wakeup(f.agent.id, { source: "assignment", triggerDetail: "system",
+        reason: "issue_commented", payload: { issueId: task!.id, commentId: comment!.id },
+        requestedByActorType: "user", requestedByActorId: f.userId,
+        contextSnapshot: { issueId: task!.id, wakeCommentId: comment!.id, wakeReason: "issue_commented" } });
+      expect(admitted?.id).toBe(run.id);
+      await f.events.tick(); await f.events.tick();
+      expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, f.agent.id))).toHaveLength(1);
+      const wakes = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, f.agent.id));
+      expect(wakes).toHaveLength(1);
+      expect(wakes[0]).toMatchObject({ status: "coalesced", runId: run.id });
+      const mailbox = await db.select().from(dotMailboxItems).where(and(eq(dotMailboxItems.assignmentId, assignment.id), eq(dotMailboxItems.kind, "follow_up")));
+      expect(mailbox).toHaveLength(1);
+      expect(mailbox[0]!.references).toEqual({ assignmentId: assignment.id, commentId: comment!.id });
+      expect(f.received.filter(event => event.data?.kind === "follow_up")).toHaveLength(1);
+    } finally {
+      await db.update(heartbeatRuns).set({ status: "cancelled" }).where(eq(heartbeatRuns.id, run.id));
+      await db.update(dotRunnerAssignments).set({ status: "fenced" }).where(eq(dotRunnerAssignments.id, assignment.id));
+      await f.events.unsubscribe(f.principal, f.subscription); await f.events.stop();
+    }
+  }, 30000);
+
+  it.each(["foreign comment", "self comment", "revoked binding", "fenced assignment", "expired assignment", "prior generation"])(
+    "refuses active comment delivery for %s", async kind => {
+      const f = await fixture(), { run, assignment } = await offeredWork(f);
+      const [task] = await db.insert(issues).values({ companyId: f.company.id, title: "Bounded follow-up", assigneeAgentId: f.agent.id }).returning();
+      await db.update(heartbeatRuns).set({ nativeIssueId: task!.id, status: "running", runtimeMode: "native",
+        nativeSessionId: assignment.normalizedSessionId }).where(eq(heartbeatRuns.id, run.id));
+      await db.update(dotRunnerAssignments).set({ status: "accepted" }).where(eq(dotRunnerAssignments.id, assignment.id));
+      const [comment] = await db.insert(issueComments).values({ companyId: f.company.id, issueId: task!.id,
+        ...(kind === "self comment" ? { authorAgentId: f.agent.id } : { authorUserId: f.userId }), body: "Bounded input" }).returning();
+      if (kind === "revoked binding") await db.update(dotAgentBindings).set({ revokedAt: new Date() }).where(eq(dotAgentBindings.id, f.snapshot.bindingId));
+      if (kind === "fenced assignment") await db.update(dotRunnerAssignments).set({ status: "fenced" }).where(eq(dotRunnerAssignments.id, assignment.id));
+      if (kind === "expired assignment") await db.update(dotRunnerAssignments).set({ expiresAt: new Date(0) }).where(eq(dotRunnerAssignments.id, assignment.id));
+      if (kind === "prior generation") await db.update(dotAgentBindings).set({ generation: f.snapshot.bindingGeneration + 1 }).where(eq(dotAgentBindings.id, f.snapshot.bindingId));
+      try {
+        expect(await db.transaction(tx => publishActiveDotComment(tx as unknown as typeof db, {
+          companyId: f.company.id, agentId: f.agent.id, bindingId: f.snapshot.bindingId, runId: run.id,
+          issueId: task!.id, commentId: kind === "foreign comment" ? randomUUID() : comment!.id }))).toBe(false);
+        expect(await db.select().from(dotMailboxItems).where(and(eq(dotMailboxItems.assignmentId, assignment.id), eq(dotMailboxItems.kind, "follow_up")))).toHaveLength(0);
+      } finally { await f.events.stop(); }
+    }, 30000);
 
   it("serializes tool-result writes and cursor reads with the binding mailbox lock", async () => {
     const f = await fixture();

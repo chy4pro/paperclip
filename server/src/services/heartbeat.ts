@@ -8166,7 +8166,7 @@ export function heartbeatService(
                     }).syncIssueSafely,
                     onSpawn: async (meta) => {
                       markDispatchStarted();
-                      await persistRunProcessMetadata(run.id, meta);
+                      await persistRunProcessMetadata(run.id, { ...meta, targetKind: executionTarget?.kind ?? "local" });
                     },
                   });
                 },

@@ -428,9 +428,13 @@ The first managed version does not expose Paperclip workspace tools, even when t
 
 The Cloud front door must forward the dedicated `/mcp/runner` protocol endpoints, OAuth discovery/authorization/token routes, and `/dot-connect/:requestId` pairing page without requiring a browser stack session. The page uses `/api/dot-mcp/requests/:requestId` for read and one-use pairing preview/approval. These aliases reject personal assistant request IDs. Regular `/mcp-connect` consent and assistant connection management retain normal sign-in. Deploy the corresponding Cloud ingress change with the tenant app; upgrading only the UI is insufficient.
 
-Remote startup checks `externalProviderCapabilities` for `openai_dot_mcp`, verifies the artifact digest, and uses the existing authenticated Runner transport. A pre-Dot artifact is rejected before dispatch. Linux controllers use their packaged Linux artifact; a development controller on another platform must set `PAPERCLIP_RUNNER_REMOTE_BINARY_PATH` to a current binary built for the sandbox platform.
+Remote startup checks `externalProviderCapabilities` for `openai_dot_mcp`, verifies the artifact digest, and uses the existing authenticated Runner transport. Before dispatch, it also requires the sandbox process marker and Linux boot/start fingerprint; a connected transport alone is insufficient. A pre-Dot artifact is rejected before dispatch. Linux controllers use their packaged Linux artifact; a development controller on another platform must set `PAPERCLIP_RUNNER_REMOTE_BINARY_PATH` to a current binary built for the sandbox platform.
 
 Recovery reads the checkpoint from the owning execution target and validates run/session/turn authority before retaining a controller copy. Missing state after dispatch fails closed for reconciliation. It never creates a replacement OpenAI Dot thread. See [the cloud Runner plan](plans/2026-10-08-cloud-dot-runner-and-external-invitations.md).
+
+An active managed Dot bridge allows a five-minute controller reconnect gap. Recovery must still prove the same sandbox lease, Runner process generation, durable session, and assignment; it cannot substitute a new process or Dot conversation. A verified shutdown receipt is authoritative even when the remote process monitor has no exit code. Remote process birth comes from the sandbox, never a colliding PID on the controller.
+
+A normal task comment for an accepted Dot assignment is recorded once in its durable mailbox and its wake receipt points to the existing run. It does not queue another execution after completion. Explicit fresh-session requests, interactions, and idle task admission retain their existing wake policy.
 
 ### Managed qualification
 

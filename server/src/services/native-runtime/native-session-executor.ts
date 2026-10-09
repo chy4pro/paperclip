@@ -10781,7 +10781,8 @@ async function waitForRemoteRunnerProcessIdentity(input: {
   identityPath: string;
   nonce: string;
   runnerInstanceId: string;
-}): Promise<{ pid: number; startedAt: string }> {
+  requireProcessStartFingerprint?: boolean;
+}): Promise<{ pid: number; startedAt: string; processStartFingerprint?: string }> {
   const deadline = Date.now() + REMOTE_RUNNER_PROCESS_IDENTITY_WAIT_MS;
   while (Date.now() < deadline) {
     const result = await input.runner
@@ -10801,7 +10802,7 @@ async function waitForRemoteRunnerProcessIdentity(input: {
       result && result.exitCode === 0 && !result.timedOut
         ? parseRemoteRunnerProcessIdentity(result.stdout, input)
         : null;
-    if (identity) return identity;
+    if (identity && (!input.requireProcessStartFingerprint || identity.processStartFingerprint)) return identity;
     await new Promise<void>((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("runner_remote_process_identity_unavailable");
@@ -10840,6 +10841,7 @@ export function createRemoteRunnerProcessLauncher(input: {
   diagnosticsDirectory: string;
   runnerInstanceId: string;
   ensureArtifact?: () => Promise<void>;
+  requireProcessStartFingerprint?: boolean;
   onSpawn?: (meta: {
     pid: number;
     processGroupId: number | null;
@@ -10975,6 +10977,7 @@ export function createRemoteRunnerProcessLauncher(input: {
           identityPath: input.processIdentityPath,
           nonce: identityNonce,
           runnerInstanceId: input.runnerInstanceId,
+          requireProcessStartFingerprint: input.requireProcessStartFingerprint,
         });
       } catch {
         const cleanupStartedAtMs = Date.now();
@@ -11273,14 +11276,27 @@ async function prepareRemoteDotRunner({ input, target, runner, root, identity }:
   };
   let spawned: () => void = () => {};
   const processStarted = new Promise<void>(resolve => { spawned = resolve; });
+  // A transport handshake alone does not prove a recoverable process owner.
+  // Do not attach the Dot broker until the exact sandbox marker is validated.
+  let identityReady: () => void = () => {};
+  let identityFailed: (error: unknown) => void = () => {};
+  const processIdentityReady = new Promise<void>((resolve, reject) => { identityReady = resolve; identityFailed = reject; });
+  void processIdentityReady.catch(() => {});
   const adoptExistingRunner = input.restartRecovery?.kind === "reattach_remote_runner"
     ? await verifyRemoteRunnerReattachment({ claim: input.restartRecovery, target, identity: { ...identity },
         runId: input.execution.binding.runId, normalizedSessionId: nativeSessionKey(input.execution) }) : undefined;
-  if (adoptExistingRunner) spawned();
-  const runnerProcessLauncher = createRemoteRunnerProcessLauncher({ target, runner, remoteBinary,
+  if (adoptExistingRunner) { spawned(); identityReady(); }
+  const launch = createRemoteRunnerProcessLauncher({ target, runner, remoteBinary,
     processIdentityPath: posix.join(runnerStateDirectory, "runner-process.identity"), stateDirectory: runnerStateDirectory,
     diagnosticsDirectory: posix.join(remoteRoot, "diagnostics"), runnerInstanceId: input.runnerInstanceId,
-    onSpawn: input.onSpawn, onLog: input.onLog, trace: input.trace, onRunnerProcessSpawned: () => spawned() });
+    requireProcessStartFingerprint: true,
+    onSpawn: async meta => { await input.onSpawn?.(meta); identityReady(); },
+    onLog: input.onLog, trace: input.trace, onRunnerProcessSpawned: () => spawned() });
+  const runnerProcessLauncher: typeof launch = spec => {
+    const handle = launch(spec);
+    void handle.completion.then(() => identityFailed(new Error("runner_remote_process_identity_unavailable")), identityFailed);
+    return handle;
+  };
   const controlPlaneRegistration: NonNullable<NonNullable<NonNullable<Parameters<typeof createNativeSessionBackend>[1]>["dotRunnerOptions"]>["controlPlaneRegistration"]> = async authority => {
     let transport: PaperclipRunnerTransport;
     // Validate outbound URL before staging; provider ingress needs the staged
@@ -11306,7 +11322,7 @@ async function prepareRemoteDotRunner({ input, target, runner, root, identity }:
         await stageRemoteRunnerFile({ target, runner, sourcePath: caBundlePath, targetPath: remoteCaBundlePath, mode: 0o600 });
         caBundlePath = remoteCaBundlePath;
       }
-      return { ...registration, connection: { mode: "connect" as const, connectUrl: transport.connectUrl,
+      return { ...registration, ready: async () => { await processIdentityReady; }, connection: { mode: "connect" as const, connectUrl: transport.connectUrl,
         ...(caBundlePath ? { caBundlePath } : {}) } };
     }
     let outbound: ReturnType<typeof connectRunnerPrpIngress> | null = null;
@@ -11316,7 +11332,7 @@ async function prepareRemoteDotRunner({ input, target, runner, root, identity }:
       activate: () => { activation = (async () => { await processStarted;
         outbound = connectRunnerPrpIngress({ authority, endpoint: transport.ingress }); })();
         void activation.catch(() => {}); },
-      ready: async () => { await activation; if (!outbound) throw new Error("runner_ingress_unavailable"); await outbound.ready; },
+      ready: async () => { await activation; if (!outbound) throw new Error("runner_ingress_unavailable"); await outbound.ready; await processIdentityReady; },
       get failure() { return outbound?.failure; },
       startupFailureCode: "runner_ingress_unavailable" as const,
       release: async () => { if (outbound) await outbound.close(); else await transport.ingress.close(); },

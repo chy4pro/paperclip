@@ -1,5 +1,6 @@
 import { isAgentAwaitingSetup } from "../../modules/agent-lifecycle/index.js";
 import { normalizeAgentNameKey } from "./retries.js";
+import { publishActiveDotComment } from "../dot-assignment-follow-up.js";
 import {
   type WakeupOptions,
   mergeCoalescedContextSnapshot,
@@ -3608,6 +3609,25 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
             // its fresh-session contract into unrelated work or create a second
             // deferred wake that could later replay the same reconciliation.
             if (reconciledSourceRunId) return { kind: "deferred" as const };
+
+            // Dot already consumes these references through its accepted
+            // assignment's durable mailbox. Deferring the same comment would
+            // execute it again after that assignment completes.
+            const dotBindingId = readNonEmptyString(parseObject(agent.adapterConfig).dotBindingId);
+            if (agent.adapterType === "paperclip_runner" && parseObject(agent.adapterConfig).provider === "openai_dot"
+                && dotBindingId && activeExecutionRun.agentId === agentId && issue.assigneeAgentId === agentId
+                && reason === "issue_commented" && wakeCommentId && opts.allowRunCoalescing !== false
+                && enrichedContextSnapshot.forceFreshSession !== true && !explicitResumeSession && !opts.manualUserWake
+                && !enrichedContextSnapshot.interactionId && !payload?.interactionId && !receiptRequest
+                && await publishActiveDotComment(tx as unknown as Db, { companyId: agent.companyId, agentId,
+                  bindingId: dotBindingId, runId: activeExecutionRun.id, issueId: issue.id, commentId: wakeCommentId })) {
+              await tx.insert(agentWakeupRequests).values({ companyId: agent.companyId, agentId, source, triggerDetail,
+                reason, payload, status: "coalesced", runId: activeExecutionRun.id,
+                requestedByActorType: opts.requestedByActorType ?? null,
+                requestedByActorId: opts.requestedByActorId ?? null, idempotencyKey: opts.idempotencyKey ?? null,
+                finishedAt: new Date() });
+              return { kind: "coalesced" as const, run: activeExecutionRun };
+            }
 
             const admissionScope = wakeQueue.createAdmissionTransactionScope(
               agent.companyId,

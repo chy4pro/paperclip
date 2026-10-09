@@ -143,7 +143,9 @@ class RunnerdDotSession implements HarnessSession {
         ticket: core.issueBootstrapTicket(60_000), runnerBinaryPath: binary,
         runnerVersion: artifact.version, runnerDigest: artifact.digest,
         maxOutboxBytes: 16 * 1024 * 1024, p0ReserveBytes: 1024 * 1024,
-        maxRuntimeMs: 0, reconnectGraceMs: 60_000,
+        // A managed controller rollout can outlast a minute. Task authority
+        // remains gated by the current controller lease throughout the gap.
+        maxRuntimeMs: 0, reconnectGraceMs: o.runnerProcessLauncher ? 300_000 : 60_000,
         // No agent, OAuth, ChatGPT or provider API credentials are inherited.
         environment: { PATH: process.env.PATH },
       });
@@ -154,11 +156,13 @@ class RunnerdDotSession implements HarnessSession {
         if (this.#closed) return;
         // Rust exits after the authenticated shutdown receipt is committed and
         // ACKed. That exit can precede the SDK's next command poll.
-        if (result.code === 0 && core.getCommand("dot_shutdown")?.status === "completed") return;
+        // Remote monitors do not report an exit code. The authenticated,
+        // persisted receipt is the evidence of shutdown, for either launcher.
+        if (core.getCommand("dot_shutdown")?.status === "completed") return;
         this.#failure ??= new Error(`dot_runner_process_exited_recovery_required: code=${result.code} signal=${result.signal}`);
         this.#wake();
       }, () => {
-        if (this.#closed) return;
+        if (this.#closed || core.getCommand("dot_shutdown")?.status === "completed") return;
         this.#failure ??= new Error("dot_runner_process_exited_recovery_required");
         this.#wake();
       });

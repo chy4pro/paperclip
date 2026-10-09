@@ -186,13 +186,15 @@ function createBroker(db: Db) {
       // run already denies tools, but the mailbox must also retire that offer.
       // This is an authority fence, never evidence that OpenAI stopped work.
       return db.transaction(async tx => {
-        const [binding] = await tx.select().from(bindings).where(and(eq(bindings.id, bindingId),
+        const [binding] = await tx.select().from(bindings).where(and(
+          eq(bindings.id, bindingId),
           eq(bindings.companyId, companyId), eq(bindings.agentId, agentId), isNull(bindings.revokedAt))).for("update");
         if (!binding) return;
         const terminal = await tx.select({ assignment: assignments }).from(assignments)
           .innerJoin(heartbeatRuns, and(eq(heartbeatRuns.id, assignments.runId),
             eq(heartbeatRuns.companyId, assignments.companyId), eq(heartbeatRuns.agentId, assignments.agentId)))
-          .where(and(eq(assignments.bindingId, binding.id), eq(assignments.bindingGeneration, binding.generation),
+          .where(and(eq(assignments.companyId, companyId), eq(assignments.agentId, agentId),
+            eq(assignments.bindingId, binding.id), eq(assignments.bindingGeneration, binding.generation),
             inArray(assignments.status, ["offered", "accepted"]),
             inArray(heartbeatRuns.status, ["succeeded", "failed", "cancelled", "timed_out"])));
         for (const { assignment } of terminal) {
