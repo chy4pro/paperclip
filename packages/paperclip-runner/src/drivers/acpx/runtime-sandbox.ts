@@ -1,6 +1,6 @@
 import { piProviderConfiguration } from "./pi-provider-config.js";
 import { configuredEnvironmentKeys } from "../../configured-environment.js";
-import { COPILOT_SYSTEM_INSTRUCTIONS_FILE, COPILOT_TASK_ORIENTATION_INSTRUCTIONS } from "./copilot-profile.js";
+import { COPILOT_SYSTEM_INSTRUCTIONS_FILE } from "./copilot-profile.js";
 import { randomBytes } from "node:crypto";
 import {
   constants,
@@ -646,15 +646,13 @@ export async function refreshCopilotSystemInstructions(
   sandbox: Pick<AcpxRuntimeSandbox, "agentHomeDirectory">,
   instructions: string,
 ): Promise<void> {
-  const current = `${instructions}\n\n# Paperclip task orientation\n${COPILOT_TASK_ORIENTATION_INSTRUCTIONS}\n`;
-  if (current.includes("\0") || Buffer.byteLength(current) > 32 * 1024) {
+  if (instructions.includes("\0") || Buffer.byteLength(instructions) > 32 * 1024) {
     throw new Error("Provider runtime instructions exceed their bounded size");
   }
-  // Native Copilot reloads this file on session/load. Empty caller text clears
-  // old caller instructions while retaining the current task-orientation rule.
+  // Native Copilot reloads this file on session/load. Empty text clears old text.
   await writePrivateFile(
     join(sandbox.agentHomeDirectory, COPILOT_SYSTEM_INSTRUCTIONS_FILE),
-    current,
+    `${instructions}\n`,
   );
 }
 

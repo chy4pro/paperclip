@@ -1,3 +1,4 @@
+import { composeCopilotSystemInstructions } from "./copilot-profile.js";
 import { piProviderConfiguration } from "./pi-provider-config.js";
 import { withAcpxTurnCancellation } from "./turn-cancellation.js";
 import { resolveAcpxProviderMode } from "./provider-mode.js";
@@ -497,7 +498,10 @@ export class AcpxRuntimeHost {
         // Do not race this write against cancellation: retain the lifetime lease
         // until the atomic refresh settles, then honor an intervening abort.
         options.signal?.throwIfAborted();
-        await refreshCopilotSystemInstructions(sandbox, boundedInstructions(options.systemInstructions));
+        await refreshCopilotSystemInstructions(
+          sandbox,
+          composeCopilotSystemInstructions(boundedInstructions(options.systemInstructions)),
+        );
         options.signal?.throwIfAborted();
       }
       if (options.agent === "pi") {

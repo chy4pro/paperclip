@@ -4083,7 +4083,7 @@ mod tests {
         descriptor_value["agentRuntimePackage"] = Value::Null;
         descriptor_value["agentRuntimeVersion"] = Value::Null;
         descriptor_value["commandDigest"] = serde_json::from_str::<Value>(include_str!(
-            "../../../../test/fixtures/copilot-profile-v34-identity.json"
+            "../../../../test/fixtures/copilot-profile-v35-identity.json"
         ))
         .unwrap()["commandDigest"]
             .clone();
@@ -4127,6 +4127,7 @@ mod tests {
             effective_model: original_descriptor.model.clone(),
             permission_mode: Some(original_descriptor.permission_mode),
             mode: original_descriptor.mode.clone(),
+            pi_thinking_level: None,
             provider_lifetime_fence_candidates: [60_001, 60_002, 60_003],
         };
         let operations = Vec::new();
