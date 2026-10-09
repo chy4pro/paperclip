@@ -38,10 +38,12 @@ Docker materialization, Git installer, or extra login isolation wholesale.
 Authorized 2026-10-09. Canonical branch: `codex/codex-runner-default`.
 Integration base: master `2dd9811e8be1dab59cccd86cdb25e8953b02fe07`.
 Canonical PR: [draft #15683](https://github.com/paperclipai/paperclip/pull/15683).
-Latest pushed candidate before integration: `4275309f9d619055f48a9b21cb0ad0a1ff7c2c63`.
-The follow-up fixes configure-on-first-use for an existing built-in that still
-needs setup. The PR remains under 100 files, with no workflow or lockfile
-changes. Fresh final-head CI and review are required after that fix.
+Last pushed candidate: `ad5d8826ad18f72d672fcafbdd9fec24ef8c9fef`.
+It integrates the current agent lifecycle boundary. The next narrow follow-up
+restores the native Codex sign-in action and settles an existing chat test's
+canonical lookup before interaction. The PR remains under 100 files, with no
+workflow, lockfile, or database migration changes. Fresh final-head CI and
+review are required after that follow-up.
 Preview: [isolated Codex QA](http://127.0.0.1:3125), normal dev supervisor,
 separate database. Hosted Linux live onboarding passed at `38199ea8`; it remains
 historical proof after the lifecycle integration. UI has separate revision-bound proof.
@@ -82,10 +84,10 @@ Claude's explicit native fixture is unchanged until its later default PR.
 | Production create/edit/onboarding UI and stories | UI worker | 171 fresh focused cases, 30 desktop/10 mobile captures and six keyboard checks; built-in follow-up passes 15 cases, UI typecheck and token gates |
 | Built-ins, plugins, approvals, imports/exports, CLI | Creation-path worker | Integrated lifecycle: 105 portability, eight approval and three asset cases pass; 73 DB cases skipped on macOS; final Linux checks required |
 | Execution/dev gate, E2E gaps, packaging, live journeys | Lead | Selected Linux onboarding case passes all 13 assertions, actual task/artifact/follow-up and cleanup; 149 public-projection/support cases pass |
-| Full CI and final review | Lead | All seven known findings fixed/resolved; master lifecycle merge conflicts resolved locally; new combined head needs full CI and fresh review |
-| Local subscription task + follow-up | Lead | Embedded-browser onboarding prepared; attended sign-in unfinished; macOS automatic legacy selection is expected |
+| Full CI and final review | Lead | Integrated head: 49 checks pass, three fail, four skip; native auth action finding and existing chat readiness fixture fixed locally; fresh combined-head checks/review required |
+| Local subscription task + follow-up | Lead | Embedded-browser Codex sign-in and first-agent creation completed; saved codex_local is expected on macOS; useful task/follow-up still pending |
 | Managed staging API/subscription onboarding | Lead | Fleet Admin sign-in completed; dedicated tenant exists, active/awake and pinned to old release; scoped one-hour QA owner access approved; final serving revision/snapshot/runtime/cleanup qualification pending |
-| Shipped npm/Docker/cloud artifacts | Lead | Clean Linux npm consumer passes at the prior candidate: 18 packages, no Codex payloads, host dependency from official npm; final-head replay pending; actual cloud composition is post-merge |
+| Shipped npm/Docker/cloud artifacts | Lead | Integrated-head clean Linux npm consumer passes: 18 packages, no Codex payloads, host dependency from official npm; immutable staging preparation reports missing matching DB package; actual cloud composition is post-merge |
 
 Keep CPU-heavy Rust/Docker builds in hosted CI. Use Node 24, bounded workers,
 conservative provider turns/timeouts and existing QA accounts. Login interactions
@@ -289,3 +291,48 @@ Next action: freeze/push the integrated candidate,
 require exact-head CI and fresh 5/5 review, restart the matched local preview and
 qualify the dedicated managed target against that candidate. The previous Linux
 run is retained evidence; it must not be relabeled as the new live measurement.
+
+### 2026-10-09 Integrated-head qualification and final corrections
+
+At `ad5d8826`, all checks completed: 49 pass, three fail and four skip. Required
+verification, workspace typecheck, build, Linux server/DB suites, native
+compilation and the real clean 18-package consumer pass. The consumer contains
+no Codex payloads and selects its owned official-npm Codex dependency despite a
+different outer version. CI merge and generated-lock identities remain separate
+from the PR source. Applicable code-owner approval is still unproven.
+
+The only browser failure is the existing selected-run denial case, whose fixture
+uses the process adapter. Its URL becomes canonical before its agent query
+settles. The test now waits for the successful company-scoped canonical response
+and verifies its complete agent identity before clicking. All nine existing
+retry cases pass against the real isolated preview with their exact request and
+denial assertions unchanged. A supporting query lifecycle control reproduces
+lost mutation feedback during a remount; the CI cause remains an inference,
+because the controlled early-click browser reproduction did not activate.
+
+Fresh review scored 4/5 and found one native Codex onboarding defect: an
+authentication error lacked the shared check that displays the sign-in action.
+The missing check reproduced before the fix. The correction retains the native
+diagnostic, failed result and explicit runner choice. All 174 readiness, registry
+and production-form render cases pass, including selected-environment login and
+negative model/dependency controls; server/UI typechecks pass. The agent creation
+skill retains the full API contract and CLI equivalents in one place, avoiding a
+redundant reference edit and keeping the PR at 99 files.
+
+The attended embedded-browser Codex sign-in succeeded, and first-agent onboarding
+created the isolated Mac agent as `codex_local`, as expected on this platform.
+The ordinary first-task interaction is open; task, artifact and follow-up are
+not yet proven. No task provider call was made during these corrections.
+
+The dedicated staging tenant's old release remains unchanged. Read-only
+immutable preparation [37959487896](https://github.com/paperclipai/paperclip-cloud/actions/runs/37959487896)
+matched the intended QA target and reported a matching DB package/migrations
+artifact gap. Rollout and serving verification were skipped. Build the frozen
+candidate's isolated preview image and packages through the existing trusted
+remote workflow; never substitute an older image or claim private Cloud
+composition from the Core-only preview. Keep the pin and provisioning default.
+
+Next action: push these narrow corrections, run fresh full CI and review, build
+matching immutable preview artifacts in hosted CI, then qualify the one QA tenant
+after those gates pass. Retain all historical cost and cleanup holds. The draft
+remains neither merge-ready nor production-ready.

@@ -1313,6 +1313,29 @@ describe("AgentConfigForm environment selector", () => {
     expect(findButton(result.container, "Sign in")).toBeTruthy();
   });
 
+  it.each([
+    ["auth_required", false], ["auth_required", true], ["failed", false],
+  ] as const)("gates native Codex sandbox login on the shared auth check (%s, %s)", async (diagnostic, authentication) => {
+    mockAgentsApi.testEnvironment.mockResolvedValue({
+      adapterType: "paperclip_runner", status: "fail", testedAt: new Date(0).toISOString(),
+      checks: [
+        { code: `codex_hello_probe_${diagnostic}`, level: "error", message: "Native Codex setup failed." },
+        ...(authentication ? [{ code: "adapter_auth_missing", level: "error", message: "The selected Codex account needs authentication." }] : []),
+      ],
+    });
+    const result = await renderCodexSandbox({ adapterType: "paperclip_runner", adapterConfig: { provider: "codex" } });
+    roots.push(result.root);
+    expect(findButton(result.container, "Sign in")).toBeFalsy();
+    await runTest(result.container);
+    expect(Boolean(findButton(result.container, "Sign in"))).toBe(authentication);
+    if (authentication) {
+      await startLogin(result.container);
+      expect(mockAgentsApi.startAdapterAuthLogin).toHaveBeenCalledWith("company-1", "codex_local", { environmentId: "sandbox-1" });
+    } else {
+      expect(mockAgentsApi.startAdapterAuthLogin).not.toHaveBeenCalled();
+    }
+  });
+
   it("hides the Codex login for a provider without the login pseudo-terminal capability", async () => {
     // The Codex device login runs on a real pseudo-terminal, so it needs a
     // provider that advertises the login pseudo-terminal capability. E2B reports

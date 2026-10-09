@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
+import { ADAPTER_AUTH_MISSING_CHECK_CODE } from "@paperclipai/shared";
 const { execute, nativeProbe, selectedRunner, sshExecute, sshRunner, nativeArtifacts, remoteLauncher, registerPrp, ingressConnect } = vi.hoisted(() => ({ execute: vi.fn(), nativeProbe: vi.fn(), selectedRunner: vi.fn(), sshExecute: vi.fn(), sshRunner: vi.fn(), nativeArtifacts: vi.fn(), remoteLauncher: vi.fn(), registerPrp: vi.fn(), ingressConnect: vi.fn() }));
 vi.mock("@paperclipai/adapter-utils/execution-target", () => ({ runAdapterExecutionTargetShellCommand: execute }));
 vi.mock("./native-ssh-command-runner.js", () => ({ createNativeSshCommandRunner: sshRunner }));
@@ -179,8 +180,24 @@ describe("Codex selected native account verification", () => {
   ])("fails closed and redacts native failures (%s)", async (message, code) => {
     nativeProbe.mockRejectedValue(new Error(message));
     const result = await testNativeRunnerAuthentication({ companyId: "company", adapterType: "paperclip_runner", config: { env: { OPENAI_API_KEY: "bound-account" } } }, "codex", "gpt-6.1-sol");
-    expect(result).toMatchObject({ status: "fail", checks: [{ code: `codex_hello_probe_${code}`, level: "error" }] });
+    expect(result.status).toBe("fail");
+    expect(result.checks[0]).toMatchObject({ code: `codex_hello_probe_${code}`, level: "error" });
+    expect(result.checks.some(check => check.code === ADAPTER_AUTH_MISSING_CHECK_CODE)).toBe(code === "auth_required");
     expect(JSON.stringify(result)).not.toContain("bound-account");
+    expect(nativeProbe).toHaveBeenCalledOnce();
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["authentication required: selected-account", true],
+    ["Model is unavailable", false],
+    ["native executable is missing", false],
+  ])("projects the canonical sandbox login check only for authentication failures (%s)", async (message, authentication) => {
+    nativeProbe.mockRejectedValue(new Error(message));
+    const result = await testNativeRunnerAuthentication(context, "codex", "gpt-6.1-sol");
+    expect(result.status).toBe("fail");
+    expect(result.checks[0].code).toBe(`codex_hello_probe_${authentication ? "auth_required" : "failed"}`);
+    expect(result.checks.some(check => check.code === ADAPTER_AUTH_MISSING_CHECK_CODE)).toBe(authentication);
+    if (authentication) expect(result.checks).toContainEqual(expect.objectContaining({ code: ADAPTER_AUTH_MISSING_CHECK_CODE, level: "error" }));
     expect(nativeProbe).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
   });

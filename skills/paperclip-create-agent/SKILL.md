@@ -201,3 +201,6 @@ cannot honor. Setup and authentication errors never silently change runners.
 Existing agents keep their saved execution after unrelated edits. An approved
 hire uses the configuration reviewed by the board. `inheritRuntimeFrom: caller`
 keeps its existing runtime inheritance and credential restrictions.
+
+CLI equivalents: `paperclipai agent create --runner legacy --payload-json ...`
+and `paperclipai agent hire --runner legacy --payload-json ...`.
