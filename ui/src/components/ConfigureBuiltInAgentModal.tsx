@@ -137,8 +137,10 @@ export function ConfigureBuiltInAgentModal({
       const existing = state.agent;
       const sameHarness = existing && agentHarnessType(existing.adapterType, existing.adapterConfig) === adapterType;
       const savedModel = typeof existing?.adapterConfig.model === "string" ? existing.adapterConfig.model.trim() : "";
-      // A runner-only change must let the server translate the full saved config.
-      const adapterInput = sameHarness && normalizedModel === savedModel ? {}
+      // Completed setup can translate saved settings for a runner-only change.
+      // Unfinished setup must submit the displayed config to clear its setup requirement.
+      const alreadyConfigured = state.status === "ready" || state.status === "paused";
+      const adapterInput = alreadyConfigured && sameHarness && normalizedModel === savedModel ? {}
         : sameHarness ? { adapterType: existing.adapterType, adapterConfig: { ...existing.adapterConfig, ...adapterConfig } }
         : { adapterType, adapterConfig };
       const result = await builtInAgentsApi.provision(companyId, definition.key, {

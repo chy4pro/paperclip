@@ -202,9 +202,14 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
     });
   });
 
-  it.each(["codex_local", "paperclip_runner"] as const)("lets the server translate saved %s settings for a runner-only change", async adapterType => {
+  it.each([
+    ["codex_local", "ready"],
+    ["paperclip_runner", "ready"],
+    ["codex_local", "paused"],
+    ["paperclip_runner", "paused"],
+  ] as const)("lets the server translate saved %s settings for a runner-only change while %s", async (adapterType, status) => {
     const savedConfig = { model: "gpt-5", timeoutSec: 45, modelReasoningEffort: "high", env: { CODEX_HOME: { type: "secret_ref", secretId: "account-1" } }, ...(adapterType === "paperclip_runner" ? { provider: "codex", codexPermissionMode: "never", lifecycleMode: "per_turn" } : {}) };
-    const state = makeState({ status: "ready", agentId: "a1", agent: makeSavedAgent(adapterType, savedConfig) });
+    const state = makeState({ status, agentId: "a1", agent: makeSavedAgent(adapterType, savedConfig) });
     provisionMock.mockResolvedValue(state);
     await renderModal(state);
     const summary = document.querySelector("summary")!;
@@ -217,6 +222,46 @@ describe("ConfigureBuiltInAgentModal (PAP-12978)", () => {
     flushSync(() => findButton("Configure")!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flushReact();
     expect(provisionMock).toHaveBeenCalledWith("c1", "briefs", { runner });
+    expect(state.agent?.adapterConfig).toEqual(savedConfig);
+  });
+
+  it.each([
+    ["codex_local", "saved"],
+    ["paperclip_runner", "saved"],
+    ["codex_local", "definition"],
+    ["paperclip_runner", "definition"],
+  ] as const)("submits the displayed %s configuration to finish setup with its %s model", async (adapterType, modelSource) => {
+    const savedConfig = {
+      ...(modelSource === "saved" ? { model: "gpt-5" } : {}),
+      timeoutSec: 45,
+      modelReasoningEffort: "high",
+      env: { CODEX_HOME: { type: "secret_ref", secretId: "account-1" } },
+      ...(adapterType === "paperclip_runner" ? { provider: "codex", codexPermissionMode: "never", lifecycleMode: "per_turn" } : {}),
+    };
+    const agent = makeSavedAgent(adapterType, savedConfig);
+    agent.metadata = { paperclipBuiltInSetupRequired: true };
+    const state = makeState({
+      status: "needs_setup",
+      agentId: agent.id,
+      agent,
+      definition: { ...makeState().definition, defaultAdapterConfig: { model: "gpt-5" } },
+    });
+    const configured = { ...state, status: "ready" as const, agent: { ...agent, metadata: { paperclipBuiltInSetupRequired: false } } };
+    provisionMock.mockResolvedValue(configured);
+    await renderModal(state);
+
+    expect(document.querySelector<HTMLInputElement>('[data-testid="model-input"]')?.value).toBe("gpt-5");
+    expect(findButton("Configure")?.disabled).toBe(false);
+    flushSync(() => findButton("Configure")!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flushReact();
+
+    expect(provisionMock).toHaveBeenCalledWith("c1", "briefs", {
+      adapterType,
+      adapterConfig: { ...savedConfig, model: "gpt-5" },
+    });
+    expect(onConfigured).toHaveBeenCalledWith(configured);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(state.agent?.metadata?.paperclipBuiltInSetupRequired).toBe(true);
     expect(state.agent?.adapterConfig).toEqual(savedConfig);
   });
 

@@ -36,14 +36,16 @@ Docker materialization, Git installer, or extra login isolation wholesale.
 ## Current slice: Codex defaults
 
 Authorized 2026-10-09. Canonical branch: `codex/codex-runner-default`.
-Master base: `57e977be7` (includes both prerequisite merges and Pi integration).
+Master base: `835a022936ddc7a152b9feab0c0420d02249a6d1`.
 Canonical PR: [draft #15683](https://github.com/paperclipai/paperclip/pull/15683).
-Initial CI candidate: `8ce217b71`. Scoped environment discovery and native import
-preservation are committed at `5ba1bc986`; the final follow-up preserves saved
-model, effort, and timeout through runner-only built-in configuration changes.
+Latest reviewed candidate: `1be8502f27b042566df5fc2d88e46dbcfc8484f3`.
+The follow-up fixes configure-on-first-use for an existing built-in that still
+needs setup. The PR remains under 100 files, with no workflow or lockfile
+changes. Fresh final-head CI and review are required after that fix.
 Preview: [isolated Codex QA](http://127.0.0.1:3125), normal dev supervisor,
-separate empty database. Current-head live evidence is pending the source freeze
-and verified binary provenance; older services and artifacts are not proof.
+separate database. Hosted Linux live onboarding passed at `38199ea8`; execution
+code is unchanged at `1be8502f`. UI changes have separate revision-bound proof.
+Attended local subscription and managed staging journeys remain unverified.
 
 New Codex agents select Paperclip Runner on qualified Linux x64 targets. Users
 choose Codex, with Paperclip Runner or Legacy runner inside Advanced. Other
@@ -76,14 +78,14 @@ Claude's explicit native fixture is unchanged until its later default PR.
 
 | Area | Owner | Current state |
 | --- | --- | --- |
-| Shared contract, server resolution, setup readiness | Core worker | 88 selection/setup, 39 route/artifact and 6 transport controls pass; server noemit passes; rebuilt daemon and Linux DB proof pending |
-| Production create/edit/onboarding UI and stories | UI worker | Implemented; 339 affected tests, UI typecheck and token gates pass; story evidence in progress |
-| Built-ins, plugins, approvals, imports/exports, CLI | Creation-path worker | Implemented; 102 portability, 8 approval, 3 CLI and 3 built-in unit checks pass; 72 DB checks require Linux |
-| Execution/dev gate, E2E gaps, packaging, live journeys | Lead | 28 runtime-selection and 122 onboarding/catalog support checks pass; actual journeys pending |
-| Full CI and final review | Lead | Initial Linux CI and Greptile running on `8ce217b71`; final-head verification pending |
-| Local API/subscription task + follow-up | Lead | Credential/runtime identity inventory; unverified on this branch |
-| Managed staging API/subscription onboarding | Lead | Exact-source preview/artifact and budget qualification pending |
-| Shipped npm/Docker/cloud artifacts | Lead | Reuse existing hosted checks; prerequisite packaging proof is historical |
+| Shared contract, server resolution, setup readiness | Core worker | 394 focused cases and 147 guard/inheritance controls pass; server noemit passes; counts overlap |
+| Production create/edit/onboarding UI and stories | UI worker | 171 fresh focused cases, 30 desktop/10 mobile captures and six keyboard checks; built-in follow-up passes 15 cases, UI typecheck and token gates |
+| Built-ins, plugins, approvals, imports/exports, CLI | Creation-path worker | 105 portability, eight approval, three CLI and three asset checks pass; 77 corrected skill-route cases pass; full Linux checks pending on final head |
+| Execution/dev gate, E2E gaps, packaging, live journeys | Lead | Selected Linux onboarding case passes all 13 assertions, actual task/artifact/follow-up and cleanup; 149 public-projection/support cases pass |
+| Full CI and final review | Lead | Native compilation passes at `1be8502f`; main CI is running; its fresh 4/5 review finding is fixed locally, with final-head replay required |
+| Local subscription task + follow-up | Lead | Embedded-browser onboarding prepared; attended sign-in unfinished; macOS automatic legacy selection is expected |
+| Managed staging API/subscription onboarding | Lead | Dedicated tenant access, serving revision, snapshot and cleanup ownership unresolved; Fleet Admin needs attended sign-in |
+| Shipped npm/Docker/cloud artifacts | Lead | Clean Linux npm consumer passes at the prior candidate: 18 packages, no Codex payloads, host dependency from official npm; final-head replay pending; actual cloud composition is post-merge |
 
 Keep CPU-heavy Rust/Docker builds in hosted CI. Use Node 24, bounded workers,
 conservative provider turns/timeouts and existing QA accounts. Login interactions
@@ -93,8 +95,9 @@ The original $250 ceiling remains. Historical receipts include unknown-charge
 reserves; the latest retained ledger holds $248.18 in costs/reservations and
 reports $1.82 unallocated, not a certified invoice balance. Reconcile unstarted
 reservations and current resource/credential state before paid runs. Do not reset
-the ceiling or treat missing charges as zero. No new paid call has run in this
-slice. Keep exact source/artifact/runtime identities and failed attempts in the
+the ceiling or treat missing charges as zero. The single new Linux campaign has
+four ready rate-card estimates totaling $1.265460800; its entire $12 hold remains
+reserved. Keep exact source/artifact/runtime identities and failed attempts in the
 existing report pipeline; mocks and passing CI do not close live acceptance.
 
 Integration found and fixed an import preservation gap: same-harness model edits
@@ -162,8 +165,8 @@ hold. Aggregate costs/reservations stay $248.179254104 under the original $250
 allocation; no historical unknown or cleanup hold was released. This is not an
 invoice-certified balance. No new paid provider task has run in this slice.
 
-Attended local Codex login is pending in the embedded browser at OpenAI security
-verification. Staging Fleet Admin requires fresh attended sign-in. The dedicated
+Attended local Codex login is unfinished in the embedded browser; its old device
+code expired. Staging Fleet Admin requires fresh attended sign-in. The dedicated
 QA stack `stack-pool-d06dca5eafe7` and its old immutable environment are identified
 historically; current access, serving revision, retained snapshot and physical
 cleanup must be verified before reuse. Old archived probe resources and missing
@@ -226,8 +229,29 @@ Attended subscription login and current access to the dedicated managed staging
 stack remain unresolved. Canonical issue coordination is unavailable because the
 original test-drive service is offline; no unrelated company was used for updates.
 
-Next action: finish public-evidence projection and affected UI proof, freeze one
-combined follow-up, require green exact-head CI and fresh 5/5 review, then complete
-the attended and managed staging journeys when access is available. The PR stays
+Public-evidence projection is complete and passes 149 existing and new support
+checks. The private behavioral grader and raw evidence remain intact. Replaying
+the retained result removes all 12 known private identity values and preserves
+the original revision and all 13 assertion verdicts. Publication needs a new
+presentation identity and operator access; the existing protected workflow has
+no report-only replay input. It cannot overwrite the prior immutable report.
+The prior exposed report also needs operator removal/cache remediation. No
+provider rerun is justified to publish repaired evidence.
+
+At `1be8502f`, fresh review confirms all six previous fixes and reports one more
+built-in setup issue. A built-in that still needs setup must submit its displayed
+configuration to complete setup even when the model is unchanged. Already
+configured agents must still preserve the full saved configuration during a
+runner-only edit. Both native and legacy regressions reproduced before the fix.
+All 15 focused cases pass after the fix, including definition-model fallback and
+ready/paused settings preservation. UI typecheck and token gates pass. Rendering
+is unchanged, so existing revision-bound visual evidence remains applicable.
+Native compilation passes; the main CI cleared its allocation delay and is
+running, with no test failure observed yet.
+
+Next action: freeze the built-in setup follow-up, require green
+exact-head CI and fresh 5/5 review, and publish sanitized retained evidence when
+operator access is available. Complete the attended and managed staging journeys
+when access is available. The PR stays
 a draft and is neither merge-ready nor production-ready yet. Merge and production
 deployment remain outside authorization.
