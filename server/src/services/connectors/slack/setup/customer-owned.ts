@@ -19,7 +19,8 @@ export function createCustomerOwnedSetup(store: SlackRegistrationStore) {
       if (previous?.status === "removed") throw conflict("This registration was removed. Continue the selected manual setup.");
       if (previous?.appId) {
         if (previous.errorCode === "slack_manifest_update_pending") {
-          await configureManifest(previous, actor, input.credentials.configurationToken, lease, managed ? "managed" : "automatic", api);
+          if (!await configureManifest(previous, actor, input.credentials.configurationToken, lease, method, api)) return;
+          if (current.endpoint.setup.slackAvatar?.status !== "uploaded") await configureAvatar(previous, actor, input.credentials.configurationToken, lease, api);
         }
         return;
       }
@@ -78,36 +79,40 @@ export function createCustomerOwnedSetup(store: SlackRegistrationStore) {
       // A retry/restart always reuses this app, even if icon upload is interrupted.
       const created = { ...row, appId: createdAppId };
       if (!await configureManifest(created, actor, input.credentials.configurationToken, lease, method, api)) return;
-      await saveAvatar(created, { status: "pending" }, actor, lease);
-      let avatar: SlackAvatarState;
-      try {
-        await endpoint(endpointId, actor);
-        await lease.assertOwned();
-        // Cloud ingress requires a tenant session. Send the preset PNG bytes so
-        // Slack does not need to fetch an authenticated Paperclip URL.
-        const render = renderAvatar;
-        const appearance = { ...resolveAgentAppearance(current.agentAppearance, current.endpoint.assignedAgentId) };
-        delete appearance.customAvatarAssetId; // The preset renderer cannot read private uploaded assets.
-        const png = await render({ appearance,
-          size: 512, scale: 1, pose: "rest", muted: false, background: "paperclip-dark" });
-        await endpoint(endpointId, actor);
-        await lease.assertOwned();
-        const upload = new FormData();
-        upload.set("app_id", createdAppId);
-        upload.set("file", new Blob([new Uint8Array(png)], { type: "image/png" }), "agent-avatar.png");
-        await api("apps.icon.set", upload, input.credentials.configurationToken);
-        avatar = { status: "uploaded", uploadedAt: new Date().toISOString() };
-      } catch {
-        // Provider echoes (including tokens) never become saved state or activity.
-        avatar = { status: "failed", errorCode: "slack_avatar_upload_failed" };
-      }
-      await saveAvatar(created, avatar, actor, lease);
-      try { await audit(created, actor, avatar.status === "uploaded" ? "avatar_uploaded" : "avatar_upload_failed", avatar.status === "failed" ? avatar.errorCode : undefined); }
-      catch { logger.warn({ endpointId, appId: createdAppId }, "Slack avatar activity could not be recorded"); }
+      await configureAvatar(created, actor, input.credentials.configurationToken, lease, api);
       // An audit outage cannot change the saved creation outcome.
       try { await audit({ ...row, appId: createdAppId }, actor, "app_created"); }
       catch { logger.warn({ endpointId, appId: createdAppId }, "Slack app creation activity could not be recorded"); }
     });
+  }
+  async function configureAvatar(row: Registration, actor: SlackSetupActor, configurationToken: string, lease: CredentialMutationLeaseGuard, api = store.api) {
+    const current = await endpoint(row.endpointId, actor);
+    await saveAvatar(row, { status: "pending" }, actor, lease);
+    let avatar: SlackAvatarState;
+    try {
+      await endpoint(row.endpointId, actor);
+      await lease.assertOwned();
+      // Cloud ingress requires a tenant session. Send the preset PNG bytes so
+      // Slack does not need to fetch an authenticated Paperclip URL.
+      const render = renderAvatar;
+      const appearance = { ...resolveAgentAppearance(current.agentAppearance, current.endpoint.assignedAgentId) };
+      delete appearance.customAvatarAssetId; // The preset renderer cannot read private uploaded assets.
+      const png = await render({ appearance,
+        size: 512, scale: 1, pose: "rest", muted: false, background: "paperclip-dark" });
+      await endpoint(row.endpointId, actor);
+      await lease.assertOwned();
+      const upload = new FormData();
+      upload.set("app_id", row.appId!);
+      upload.set("file", new Blob([new Uint8Array(png)], { type: "image/png" }), "agent-avatar.png");
+      await api("apps.icon.set", upload, configurationToken);
+      avatar = { status: "uploaded", uploadedAt: new Date().toISOString() };
+    } catch {
+      // Provider echoes (including tokens) never become saved state or activity.
+      avatar = { status: "failed", errorCode: "slack_avatar_upload_failed" };
+    }
+    await saveAvatar(row, avatar, actor, lease);
+    try { await audit(row, actor, avatar.status === "uploaded" ? "avatar_uploaded" : "avatar_upload_failed", avatar.status === "failed" ? avatar.errorCode : undefined); }
+    catch { logger.warn({ endpointId: row.endpointId, appId: row.appId! }, "Slack avatar activity could not be recorded"); }
   }
   async function configureManifest(row: Registration, actor: SlackSetupActor, configurationToken: string, lease: CredentialMutationLeaseGuard, method: "automatic" | "managed" = "automatic", api = store.api) {
     const current = await endpoint(row.endpointId, actor);

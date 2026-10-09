@@ -4244,6 +4244,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         await f.grants.complete(await f.authorize(), "new-claim", null, actor);
         f.state.failManifestUpdate = false; await f.provision();
         expect((await f.service.get(f.endpoint.id)).setup.slackRegistration?.status).toBe("configured");
+        expect((await f.service.get(f.endpoint.id)).setup.slackAvatar?.status).toBe("uploaded");
+        expect(f.provider.mock.calls.filter(([url]) => String(url).endsWith("apps.icon.set"))).toHaveLength(1);
         expect(f.provider.mock.calls.filter(([url]) => String(url).endsWith("apps.manifest.create"))).toHaveLength(1);
       });
       it("does not restore a revoked grant when an in-flight refresh returns", async () => {
