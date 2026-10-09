@@ -18,6 +18,7 @@ import {
   ADAPTER_AUTH_MISSING_CHECK_CODE,
   aiConnectionBindingSchema,
   aiRuntimeConnectionBindingSchema,
+  type AiConnectionBinding,
   type AiRuntimeConnectionBinding,
 } from "@paperclipai/shared";
 import { toolConnections } from "@paperclipai/db";

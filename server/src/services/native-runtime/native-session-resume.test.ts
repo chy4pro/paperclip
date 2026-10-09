@@ -762,7 +762,7 @@ const recoveryFakeCodex = resolve(
       await chmod(command, 0o700);
       // Installed dependency selection intentionally precedes PATH on mainline.
       // Bind this fixture's synthetic provider explicitly at that boundary.
-      const codexCommandModule = await import("../../../../packages/paperclip-runner/src/drivers/codex/codex-command.js");
+      const codexCommandModule = await import(new URL("../../../../packages/paperclip-runner/src/drivers/codex/codex-command.ts", import.meta.url).href);
       const codexCommandSelection = vi.spyOn(codexCommandModule, "resolveCodexCommand").mockReturnValue(command);
       restoreCodexCommand = () => codexCommandSelection.mockRestore();
       await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
