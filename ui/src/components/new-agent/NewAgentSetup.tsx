@@ -92,6 +92,7 @@ export function NewAgentSetup() {
       name={params.get("name") ?? ""}
       adapterType={params.get("adapterType") === "paperclip_runner" && (params.get("runnerProvider") ?? "codex") === "codex" ? "codex_local" : params.get("adapterType") ?? ""}
       initialRunner={params.get("runner") ?? (params.get("adapterType") === "paperclip_runner" && (params.get("runnerProvider") ?? "codex") === "codex" ? "paperclip" : "auto")}
+      preserveNativeCodex={params.get("adapterType") === "paperclip_runner" && (params.get("runnerProvider") ?? "codex") === "codex"}
       runnerProvider={params.get("runnerProvider") ?? "codex"}
       createdAgentId={params.get("createdAgentId")}
     />
@@ -104,6 +105,7 @@ function Setup({
   adapterType,
   runnerProvider,
   initialRunner,
+  preserveNativeCodex,
   createdAgentId,
 }: {
   companyId: string;
@@ -111,6 +113,7 @@ function Setup({
   adapterType: string;
   runnerProvider: string;
   initialRunner: string;
+  preserveNativeCodex: boolean;
   createdAgentId: string | null;
 }) {
   const navigate = useNavigate();
@@ -118,6 +121,7 @@ function Setup({
   const { openNewIssue } = useDialogActions();
   const appearanceDraft = useAgentAppearanceDraft(`${companyId}:new-agent`);
   const [runner, setRunner] = useState<AgentRunnerChoice>(initialRunner === "legacy" || initialRunner === "paperclip" ? initialRunner : "auto");
+  const requestAdapterType = preserveNativeCodex && runner === "paperclip" ? "paperclip_runner" : adapterType;
   const isRunner = adapterType === "paperclip_runner";
   const isDot = isRunner && runnerProvider === "openai_dot";
   const brandType = isDot ? "openai_dot" : isRunner
@@ -335,7 +339,7 @@ function Setup({
         adapter.loaded &&
         !adapter.disabled &&
         !getAdapterDisplay(adapterType).comingSoon,
-    );
+    ) && (requestAdapterType !== "paperclip_runner" || adapterType === "paperclip_runner" || adapterInventory.data?.some(adapter => adapter.type === "paperclip_runner" && adapter.loaded && !adapter.disabled));
   const ready = Boolean(
     available &&
     (adapterType !== "codex_local" || runner !== "auto" || Boolean(adapters.data)) &&
@@ -380,6 +384,9 @@ function Setup({
         : {}),
     };
     const config = getUIAdapter(adapterType).buildAdapterConfig(values);
+    if (preserveNativeCodex && runner === "paperclip") {
+      Object.assign(config, { provider: "codex", codexPermissionMode: "never", lifecycleMode: "per_turn" });
+    }
     if (isRunner)
       Object.assign(config, {
         provider: (runnerProvider === "claude" || runnerProvider === "grok") ? "acpx" : runnerProvider,
@@ -464,7 +471,7 @@ function Setup({
       const config = await preparedConfig(nextConnection);
       const tested = await testAgentSetup({
         companyId,
-        adapterType,
+        adapterType: requestAdapterType,
         providerAdapter: brandType,
         ...(adapterType === "codex_local" && runner !== "auto" ? { runner } : {}),
         adapterConfig: config,
@@ -538,7 +545,7 @@ function Setup({
         appearance: appearanceDraft.appearance,
         role: existing.length ? "general" : "ceo",
         ...(leader ? { reportsTo: leader.id } : {}),
-        adapterType,
+        adapterType: requestAdapterType,
         ...(adapterType === "codex_local" && runner !== "auto" ? { runner } : {}),
         adapterConfig: config,
         defaultEnvironmentId:

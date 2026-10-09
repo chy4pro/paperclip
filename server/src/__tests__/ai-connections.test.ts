@@ -23,6 +23,7 @@ import * as codexAdapter from "@paperclipai/adapter-codex-local/server";
 import { WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE } from "@paperclipai/adapter-utils/workspace-restore-merge";
 import * as executionTarget from "@paperclipai/adapter-utils/execution-target";
 import * as runnerProbe from "../vendor/paperclip-runner/index.js";
+import * as nativeCodexRunner from "../services/native-runtime/native-codex-runner.js";
 import { testNativeRunnerAuthentication } from "../services/native-runtime/setup-readiness.js";
 import { prepareManagedAiRuntime, withManagedAiProbe, assertManagedAiProjectAuth, isAiConnectionBusy } from "../services/ai-connection-runtime.js";
 import { execute as executeGemini, testEnvironment as testGeminiEnvironment } from "@paperclipai/adapter-gemini-local/server";
@@ -180,7 +181,10 @@ describe("managed AI connections", () => {
     await service.save(companyId, owner, { provider: "openai", method: "subscription", ownership: "personal", name: owner, loginSessionId: "fixture", agentIds: [], allAgents: true }, auth("10"));
     const [row] = await service.quotaAccounts(companyId, owner);
     const [before] = await db.select({ adapterType: agents.adapterType, adapterConfig: agents.adapterConfig }).from(agents).where(eq(agents.id, agentId));
+    const runnerBinary = path.join(home, "fixture-runnerd");
+    const resolveBinary = vi.spyOn(nativeCodexRunner, "resolvePaperclipRunnerBinary").mockReturnValue(runnerBinary);
     const probe = vi.spyOn(runnerProbe, "probeNativeRunnerEnvironment").mockImplementation(async input => {
+      expect(input.transportOptions?.runnerBinary).toBe(runnerBinary);
       expect(input.transportOptions?.sourceCodexHome).toContain("/provider");
       expect(await readFile(path.join(input.transportOptions!.sourceCodexHome!, "auth.json"), "utf8")).toBe(auth("10"));
       const providerHome = path.join(input.runtimeDirectory, "codex-home");
@@ -203,7 +207,7 @@ describe("managed AI connections", () => {
       await expect(access(managedHome!)).rejects.toMatchObject({ code: "ENOENT" });
       const [after] = await db.select({ adapterType: agents.adapterType, adapterConfig: agents.adapterConfig }).from(agents).where(eq(agents.id, agentId));
       expect(after).toEqual(before);
-    } finally { probe.mockRestore(); }
+    } finally { probe.mockRestore(); resolveBinary.mockRestore(); }
   });
 
   it("rejects preparation when reconnect replaces the selected credential reference", async () => {

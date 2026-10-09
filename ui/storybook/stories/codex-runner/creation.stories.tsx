@@ -7,7 +7,7 @@ import { storybookHiredAgent } from "../../fixtures/paperclipData";
 import { resetOnboardingFixtureState, setOnboardingFixtureState } from "../../fixtures/onboardingEnvironment";
 
 /** Real creation screen; existing Storybook API fixtures provide isolated accounts. */
-function installCodexCreationFixture({ setupFailure = false, nativeRunnerEnabled = false }: { setupFailure?: boolean; nativeRunnerEnabled?: boolean } = {}) {
+function installCodexCreationFixture({ setupFailure = false, nativeRunnerEnabled = false, unqualifiedTarget = false }: { setupFailure?: boolean; nativeRunnerEnabled?: boolean; unqualifiedTarget?: boolean } = {}) {
   resetOnboardingFixtureState();
   setOnboardingFixtureState({ environments: "local", authSignal: "present", localLoginStatus: "ready", savedManagedSubscription: "openai" });
   const previous = window.fetch;
@@ -19,9 +19,15 @@ function installCodexCreationFixture({ setupFailure = false, nativeRunnerEnabled
       const response = await previous(input, init);
       return Response.json({ ...await response.json(), enableNativeRunner: nativeRunnerEnabled });
     }
-    if (nativeRunnerEnabled && url.pathname === "/api/adapters") {
+    if (url.pathname === "/api/instance/settings/general") return Response.json({ executionMode: "any" });
+    if (url.pathname === "/api/health") {
       const response = await previous(input, init);
-      return Response.json([...await response.json(), { type: "paperclip_runner", label: "Paperclip Runner", source: "builtin", loaded: true, disabled: false, modelsCount: 0 }]);
+      return Response.json({ ...await response.json(), status: "ok" });
+    }
+    if (url.pathname === "/api/adapters") {
+      const response = await previous(input, init);
+      const adapters = (await response.json()).map((adapter: { type: string }) => adapter.type === "codex_local" ? { ...adapter, supportedRunners: unqualifiedTarget ? ["legacy"] : ["paperclip", "legacy"], defaultRunner: unqualifiedTarget ? "legacy" : "paperclip" } : adapter);
+      return Response.json(nativeRunnerEnabled || unqualifiedTarget ? [...adapters, { type: "paperclip_runner", label: "Paperclip Runner", source: "builtin", loaded: true, disabled: false, modelsCount: 0 }] : adapters);
     }
     if (url.pathname.endsWith("/adapters/codex_local/models")) return Response.json(models);
     if (url.pathname.endsWith("/adapters/codex_local/test-environment")) {
@@ -68,6 +74,13 @@ const connectCodex: NonNullable<Story["play"]> = async ({ canvasElement }) => {
 };
 export const AutomaticCodex: Story = { play: showRunner };
 export const ExplicitLegacy: Story = { parameters: { initialEntries: ["/PAP/agents/new?name=Nova&adapterType=codex_local&runner=legacy"] }, play: showRunner };
+export const OldNativeCodexLink: Story = {
+  parameters: { initialEntries: ["/PAP/agents/new?name=Nova&adapterType=paperclip_runner&runnerProvider=codex"], codexCreationFixture: { unqualifiedTarget: true } },
+  play: async context => {
+    await showRunner(context);
+    await expect(await within(context.canvasElement).findByRole("button", { name: "Runner" })).toHaveTextContent("Paperclip Runner");
+  },
+};
 export const AutomaticLight: Story = { ...AutomaticCodex, globals: { theme: "light" } };
 export const LegacyMobile: Story = { ...ExplicitLegacy, globals: { viewport: { value: "mobile1", isRotated: false } } };
 export const SetupFailure: Story = { parameters: { codexCreationFixture: { setupFailure: true } }, play: async context => {

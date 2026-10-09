@@ -200,6 +200,45 @@ afterEach(async () => {
   container.remove();
 });
 describe("New agent setup", () => {
+  it("records an explicit legacy choice when it matches the Mac default, then preserves it on Linux", async () => {
+    settings.get.mockResolvedValue({ defaultEnvironmentId: "local-1" });
+    envApi.list.mockResolvedValue([
+      { id: "local-1", name: "Mac", driver: "local", status: "active", config: {} },
+      { id: "linux-ssh", name: "Linux", driver: "ssh", status: "active", config: {} },
+    ]);
+    adapterApi.list.mockImplementation(async (context?: { environmentId?: string | null }) => state.adapters.map((adapter: any) =>
+      adapter.type === "codex_local" ? { ...adapter, supportedRunners: context?.environmentId === "linux-ssh" ? ["paperclip", "legacy"] : ["legacy"], defaultRunner: context?.environmentId === "linux-ssh" ? "paperclip" : "legacy" } : adapter));
+    await render("codex_local");
+    await act(async () => (container.querySelector("summary") as HTMLElement).click());
+    const runner = container.querySelector<HTMLButtonElement>('[aria-label="Runner"]')!;
+    expect(runner.textContent).toBe("Legacy runner (default)");
+    await act(async () => runner.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[role="option"][data-value="legacy"]')!.click());
+    await connect("OpenAI");
+    expect(api.testEnvironment).toHaveBeenLastCalledWith("company-1", "codex_local", expect.objectContaining({ runner: "legacy" }));
+    const environment = container.querySelector<HTMLSelectElement>('select[aria-label="Environment"]')!;
+    await act(async () => { environment.value = "linux-ssh"; environment.dispatchEvent(new Event("change", { bubbles: true })); });
+    await settle();
+    await connect("OpenAI");
+    await click("Finish setup");
+    expect(api.testEnvironment).toHaveBeenLastCalledWith("company-1", "codex_local", expect.objectContaining({ environmentId: "linux-ssh", runner: "legacy" }));
+    expect(api.hire.mock.calls[0][1]).toMatchObject({ adapterType: "codex_local", runner: "legacy" });
+  });
+
+  it("preserves an old native Codex setup link on an unqualified target with the experiment off", async () => {
+    settings.getExperimental.mockResolvedValue({ enableNativeRunner: false });
+    adapterApi.list.mockImplementation(async () => state.adapters.map((adapter: any) => adapter.type === "codex_local" ? { ...adapter, supportedRunners: ["legacy"], defaultRunner: "legacy" } : adapter));
+    api.testEnvironment.mockImplementation(async (_company, adapterType, payload) => {
+      if (adapterType === "codex_local" && payload.runner === "paperclip") throw new Error("This target is not qualified for a new native default.");
+      return { ...pass, adapterType, checks: [{ code: "paperclip_runner_codex_hello_probe_passed", level: "info", message: "Native runtime replied" }] };
+    });
+    await render("paperclip_runner", "codex");
+    await connect("OpenAI");
+    await click("Finish setup");
+    expect(api.testEnvironment).toHaveBeenCalledWith("company-1", "paperclip_runner", expect.objectContaining({ runner: "paperclip", adapterConfig: expect.objectContaining({ provider: "codex" }) }));
+    expect(api.hire.mock.calls[0][1]).toMatchObject({ adapterType: "paperclip_runner", runner: "paperclip", adapterConfig: { provider: "codex" } });
+  });
+
   it("discovers the runner for the selected target and rechecks after changing environments", async () => {
     settings.get.mockResolvedValue({ defaultEnvironmentId: "linux-ssh" });
     envApi.list.mockResolvedValue([
@@ -801,8 +840,8 @@ describe("New agent setup", () => {
       await click("Finish setup");
       const config = api.hire.mock.calls[0][1].adapterConfig;
       if (runner === "codex") {
-        expect(api.hire.mock.calls[0][1]).toMatchObject({ adapterType: "codex_local", runner: "paperclip" });
-        expect(api.testEnvironment).toHaveBeenCalledWith("company-1", "codex_local", expect.objectContaining({ runner: "paperclip" }));
+        expect(api.hire.mock.calls[0][1]).toMatchObject({ adapterType: "paperclip_runner", runner: "paperclip" });
+        expect(api.testEnvironment).toHaveBeenCalledWith("company-1", "paperclip_runner", expect.objectContaining({ runner: "paperclip" }));
       } else expect(config.provider).toBe(runner === "claude" ? "acpx" : runner);
       if (runner === "claude") {
         expect(config.acpxAgent).toBe("claude");
@@ -871,6 +910,7 @@ describe("New agent setup", () => {
   });
   it("blocks a disabled runner even when opened through a URL", async () => {
     state.adapters = [
+      { type: "codex_local", loaded: true, disabled: false },
       { type: "paperclip_runner", loaded: true, disabled: true },
     ];
     await render("paperclip_runner");

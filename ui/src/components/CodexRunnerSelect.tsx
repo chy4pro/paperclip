@@ -28,8 +28,8 @@ export function CodexRunnerSelect({
       <SelectPopover
         aria-label="Runner"
         disabled={disabled}
-        value={value === "auto" ? defaultRunner ?? "auto" : value}
-        displayValue={value === "auto" && !defaultRunner ? (pending ? "Checking runner availability…" : "Automatic selection unavailable") : undefined}
+        value={value}
+        displayValue={value === "auto" ? (defaultRunner ? `${defaultRunner === "paperclip" ? "Paperclip Runner" : "Legacy runner"} (default)` : pending ? "Checking runner availability…" : "Automatic selection unavailable") : undefined}
         onValueChange={next => onChange(next as AgentRunnerChoice)}
         options={[
           { value: "paperclip", label: `Paperclip Runner${defaultRunner === "paperclip" ? " (default)" : ""}`, disabled: !supportedRunners.includes("paperclip") && value !== "paperclip" },

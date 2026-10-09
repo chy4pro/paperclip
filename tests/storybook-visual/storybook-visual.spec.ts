@@ -37,6 +37,10 @@ const EXTRA_SETTLE_MS: Record<string, number> = {
 // waiting. The affected element is masked (solid overlay in both baseline and
 // comparison) so the rest of the story still snapshot-verifies.
 const MASKED_SELECTORS: Record<string, string> = {
+  // The unchanged dialog character animates through its SVG runtime even with
+  // reduced motion. Keep the harness picker and footer fully visible.
+  "agents-codex-runner-creation--experimental-native-harnesses":
+    '[role="dialog"] [data-slot="agent-avatar"]',
   // DocumentAnnotationLayer's ::highlight range over "two selectors" ends 1-2
   // characters short on ~half of renders (anchor offsets race). Mask only the
   // paragraph that carries that highlight.

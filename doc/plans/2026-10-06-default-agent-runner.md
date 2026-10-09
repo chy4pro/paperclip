@@ -170,3 +170,64 @@ cleanup must be verified before reuse. Old archived probe resources and missing
 compute billing remain unresolved. Do not substitute old artifacts or passing CI
 for these live gates. The next candidate must pass fresh CI and review before
 merge sign-off; actual private cloud composition remains post-merge work.
+
+
+### 2026-10-09 Codex-only candidate qualification update
+
+Frozen execution candidate `38199ea8e6a276eecd35084ad84d691322aba9f4` is rebased
+onto master `835a022936ddc7a152b9feab0c0420d02249a6d1`. Its CI completed
+48 passing, four failing and four skipped checks. The two substantive failures
+are test fixtures: legacy skill expectations on Linux and a credential probe
+that depended on a developer daemon. Their narrow corrections pass locally:
+77 native/legacy/onboarding skill route cases and the selected-login refresh
+regression. The earlier Node 26 skill run ended without a result; it is not proof.
+Build, workspace typecheck, all browser E2E shards, policy checks, native
+compilation, and the clean public npm consumer pass. The consumer checks all
+18 packed packages contain no Codex payload and acquires host Codex from official
+npm. The merge and generated-lock CI stamps are recorded separately from source.
+
+The existing Linux Product E2E campaign [37950165589](https://github.com/paperclipai/paperclip/actions/runs/37950165589)
+passed its only selected case on attempt one, without a retry. The ordinary
+onboarding picker saved `paperclip_runner` / `codex`. All 13 assertions passed,
+including an independently checked nonce-bearing document and follow-up with
+recorded native execution and the same workspace. Four runs succeeded with
+observed model `gpt-5.6-sol`; cleanup passed. Target source is exactly `38199ea8`.
+The workflow deliberately applies its verified resolved lock; the source receipt
+is dirty and must not be described as a pristine checkout. The report selected
+one of 52 catalog cases; it is not the entire catalog qualification.
+
+The final run ledger contains four ready rate-card estimates totaling
+$1.265460800 (openai-standard-2026-09-30). Production pricing and accounting
+settled. The existing E2E numeric-only cost summary omits decimal-string
+costUsdExact and incorrectly reports unpriced/zero; this is a reporting follow-up,
+not a production pricing failure. The full $12 campaign hold remains reserved for
+setup and invoice uncertainty. Estimates are not provider invoices. No further
+paid campaign was dispatched.
+The existing public report includes private session identifiers in its result
+summary. It is withheld from broad linking while an allowlisted public projection
+is added at the existing result seam. Private artifacts and behavioral grading
+remain intact. This is an evidence-publication correction, not new eval machinery.
+
+Fresh review scored 3/5, verified the previous three fixes, and found three UI
+edge cases: preserve original native setup-link intent on unqualified hosts;
+retain built-in settings on runner-only changes; and record an explicit choice
+when clicking the displayed automatic default. These fixes pass 171 focused UI
+checks, typecheck and token gates. A fresh static build passes; affected visual
+proof is in progress. Existing UI verification passed 28 desktop/eight mobile
+renders, six keyboard/footer cases and two touch/wheel journeys. Final CI/review
+must run after this combined follow-up is frozen.
+
+The isolated preview remains [3125](http://127.0.0.1:3125/COD/dashboard).
+Its supervisor now uses the correct port and the backend restarted at
+`2026-10-09T15:28:08.305Z`. No user preview or the separate OAuth proxy was stopped.
+The first-agent name draft survived reload. The cached local daemon is not proof
+of the new native Rust seams; Linux hosted build/live execution supply that proof.
+Attended subscription login and current access to the dedicated managed staging
+stack remain unresolved. Canonical issue coordination is unavailable because the
+original test-drive service is offline; no unrelated company was used for updates.
+
+Next action: finish public-evidence projection and affected UI proof, freeze one
+combined follow-up, require green exact-head CI and fresh 5/5 review, then complete
+the attended and managed staging journeys when access is available. The PR stays
+a draft and is neither merge-ready nor production-ready yet. Merge and production
+deployment remain outside authorization.

@@ -90,7 +90,21 @@ export function AgentSettingsPreview({
   const queryClient = useQueryClient();
   useEffect(() => {
     const uninstall = fixtures.install();
+    const previous = window.fetch;
+    const codexFixture: typeof fetch = async (input, init) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
+      if (url.pathname === "/api/adapters" || url.pathname === "/api/health") {
+        const response = await previous(input, init);
+        const data = await response.json();
+        return Response.json(url.pathname === "/api/health" ? { ...data, status: "ok" }
+          : data.map((adapter: { type: string }) => adapter.type === "codex_local" ? { ...adapter, supportedRunners: ["paperclip", "legacy"], defaultRunner: "paperclip" } : adapter));
+      }
+      return previous(input, init);
+    };
+    if (adapterType === "codex_local" || adapterType === "paperclip_runner") window.fetch = codexFixture;
     const fixtureQueryKeys = [
+      queryKeys.health,
+      queryKeys.adapters.all,
       queryKeys.agents.detail(ID),
       queryKeys.agents.detail(REF),
       queryKeys.agents.skills(ID),
@@ -114,10 +128,11 @@ export function AgentSettingsPreview({
     navigate(`/PAP/agents/${REF}/${initialTab}`, { replace: true });
     setReady(true);
     return () => {
+      if (window.fetch === codexFixture) window.fetch = previous;
       uninstall();
       clearFixtureQueries();
     };
-  }, [fixtures, initialTab, queryClient, setSelectedCompanyId]);
+  }, [adapterType, fixtures, initialTab, queryClient, setSelectedCompanyId]);
   if (!ready || selectedCompanyId !== COMPANY) return null;
   return (
     <Routes>

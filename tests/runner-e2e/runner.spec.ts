@@ -34,7 +34,7 @@ import { captureStockHarness, gradeStockHarness, gradeStockHire } from "./stock-
 import { verifyStockHarnessPreflight, STOCK_PREFLIGHT_ENV } from "./stock-harness-admission.js";
 import { createTaskThroughUi, submitTaskReply } from "./user-actions.js";
 
-import { runFirstTaskFlow, setupFirstTaskFixtures } from "./first-task-flow.js";
+import { projectFirstTaskResult, runFirstTaskFlow, setupFirstTaskFixtures } from "./first-task-flow.js";
 import { runChatFlow } from "./chat-flow.js";
 import { restartChatServer } from "./chat-restart.js";
 import { matchesRunCount, minimumRunCount } from "./run-count.js";
@@ -3147,10 +3147,13 @@ for (const execution of executions) {
         ...resultWithoutBilling,
         billing: summarizeExecutionBilling(resultWithoutBilling),
       };
+      if (firstTaskEvidence) {
+        await writeSanitizedJson(snapshotsDir, "first-task-result-private.json", result, secrets);
+      }
       await mkdir(privateDir, { recursive: true });
       await writeFile(
         resultPath,
-        `${JSON.stringify(sanitizeJson(result, secrets), null, 2)}\n`,
+        `${JSON.stringify(sanitizeJson(projectFirstTaskResult(result), secrets), null, 2)}\n`,
         "utf8",
       );
       await testInfo.attach("runner-e2e-result", {
