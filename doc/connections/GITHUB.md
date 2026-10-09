@@ -188,6 +188,20 @@ recovery of the existing App instead of a second creation. Direct webhook and
 manual existing-App recovery remain available. Connecting does not prove that
 an agent runtime can execute a review.
 
+### Bot mention acknowledgements
+
+When Paperclip accepts an authorized mention on an issue or PR comment, the
+dedicated App adds an eyes reaction before the agent runs, including while work
+is queued. Description and review-summary mentions do not currently support
+this reaction acknowledgement.
+
+A confirmed comment or review-tool reply queues removal immediately, without
+waiting for the agent's native final. Durable cleanup retries independently and
+removes only this App's eyes on the original message. Uncertain publication
+retains the reaction until delivery is confirmed; terminal-run cleanup remains
+the fallback when no reply is published. Admission, repository restrictions and
+credential checks still apply before either reaction operation.
+
 ## Run projection
 
 The resolved token is leased at run start as an audited class-3 secret and is

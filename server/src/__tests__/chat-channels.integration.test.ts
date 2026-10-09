@@ -2230,6 +2230,25 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         body: "Yes, I am here. /\\_/\\", idempotencyKey: "single-response",
       });
       expect(reply.status).toBe("processed");
+      // Cleanup belongs to the confirmed tool reply, not the later native final.
+      expect(f.runtime.endpoints.get(f.endpoint.id)?.reactions).toEqual([
+        { threadId: f.conversation.externalThreadId, messageId: "41801", emoji: "eyes" },
+      ]);
+      expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.run.id)))[0].status).toBe("running");
+      const [removal] = await db.select().from(chatActions).where(and(
+        eq(chatActions.endpointId, f.endpoint.id), like(chatActions.providerActionId, "receipt_reaction_remove:%")));
+      expect(removal).toBeDefined();
+      await f.service.processPendingReceiptReactions(1, removal.id);
+      await f.service.processPendingReceiptReactions(1, removal.id);
+      expect(f.runtime.endpoints.get(f.endpoint.id)?.removedReactions).toEqual([
+        { threadId: f.conversation.externalThreadId, messageId: "41801", emoji: "eyes" },
+      ]);
+      // Retrying the tool neither posts again nor creates another cleanup row.
+      await githubChatReviewService(db, f.providerFetch).execute(f.session, "comment", {
+        body: "Yes, I am here. /\\_/\\", idempotencyKey: "single-response",
+      });
+      expect(await db.select().from(chatActions).where(and(eq(chatActions.endpointId, f.endpoint.id),
+        like(chatActions.providerActionId, "receipt_reaction_remove:%")))).toHaveLength(1);
       await expect(githubRunReplyState(db, { ...f.session, endpointId: f.endpoint.id })).resolves.toBe("confirmed");
       const authorizationReason = await resolveChatRunPresentationAuthorizationReason(db, f.session);
       expect(authorizationReason).toBe("internal_agent_write");
@@ -2241,6 +2260,36 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(writes).toHaveLength(1); expect(writes[0]).toContain("Yes, I am here.");
       expect(f.runtime.endpoints.get(f.endpoint.id)?.posts).toEqual([]);
       expect(await db.select().from(chatPublications).where(and(eq(chatPublications.endpointId, f.endpoint.id), eq(chatPublications.state, "published")))).toEqual([]);
+    });
+    it("keeps GitHub eyes during an ambiguous reply and clears them when a retry confirms delivery", async () => {
+      const f = await toolReplyFixture();
+      let unavailable = true;
+      f.setSupplementalProviderFetch(async (input, init) => {
+        const url = String(input);
+        if (url.includes("/issues/418/comments?")) return Response.json([]);
+        if (url.endsWith("/issues/418/comments") && init?.method === "POST") {
+          if (unavailable) throw new Error("Response lost");
+          return Response.json({ id: 41802, html_url: "https://github.com/paperclipai/paperclip/issues/418#issuecomment-41802" });
+        }
+        return undefined;
+      });
+      const reviews = githubChatReviewService(db, f.providerFetch);
+      await reviews.execute(f.session, "comment", { body: "Here is your answer", idempotencyKey: "retry-reply" });
+      const removals = () => db.select().from(chatActions).where(and(eq(chatActions.endpointId, f.endpoint.id),
+        like(chatActions.providerActionId, "receipt_reaction_remove:%")));
+      expect(await removals()).toEqual([]);
+      expect(f.runtime.endpoints.get(f.endpoint.id)?.removedReactions).toEqual([]);
+      const [publication] = await db.select().from(chatActions).where(and(eq(chatActions.endpointId, f.endpoint.id),
+        eq(chatActions.kind, "github_review_publication")));
+      expect(publication.status).toBe("failed");
+      unavailable = false;
+      await db.update(chatActions).set({ result: { ...publication.result, retryAt: new Date(0).toISOString() } })
+        .where(eq(chatActions.id, publication.id));
+      await reviews.processPending();
+      expect(await removals()).toHaveLength(1);
+      await f.service.processPendingReceiptReactions();
+      expect(f.runtime.endpoints.get(f.endpoint.id)?.removedReactions).toHaveLength(1);
+      expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, f.run.id)))[0].status).toBe("running");
     });
     it("does not invent a GitHub completion response when the agent sends no tool reply", async () => {
       const f = await toolReplyFixture();

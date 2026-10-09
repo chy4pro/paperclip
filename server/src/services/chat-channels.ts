@@ -1,3 +1,8 @@
+import {
+  receiptReactionPayload,
+  stageReceiptReactionRemovals,
+  type ReceiptReactionPayload,
+} from "./chat-receipt-reactions.js";
 import { authorizationService, canActorReadIssuePrivacy, canPublishIssueToChatAudience } from "./authorization.js";
 import { withSlackBoardLease } from "./slack-board-lease.js";
 import { mirrorSlackBoardComment, slackBoardReplyBindings } from "./slack-board-messages.js";
@@ -1126,17 +1131,6 @@ type ProviderEffectPayload = {
   credentialFingerprint: string;
 };
 
-type ReceiptReactionPayload = {
-  version: 1;
-  operation: "add" | "remove";
-  threadId: string;
-  messageId: string;
-  reaction: "eyes";
-  runtimeGeneration: number;
-  credentialFingerprint: string;
-  githubReceipt?: GitHubReceiptIdentity;
-};
-
 type SlackFileUploadReceiptPayload = {
   version: 1;
   publicationId: string;
@@ -1259,29 +1253,6 @@ function telegramMaintenancePayload(
     return null;
   }
   return payload as TelegramMaintenancePayload;
-}
-
-function receiptReactionPayload(
-  payload: Record<string, unknown>,
-): ReceiptReactionPayload | null {
-  const operation = payload.operation ?? "add";
-  if (
-    payload.version !== 1 ||
-    (operation !== "add" && operation !== "remove") ||
-    typeof payload.threadId !== "string" ||
-    !payload.threadId ||
-    typeof payload.messageId !== "string" ||
-    !payload.messageId ||
-    payload.reaction !== "eyes" ||
-    typeof payload.runtimeGeneration !== "number" ||
-    !Number.isSafeInteger(payload.runtimeGeneration) ||
-    typeof payload.credentialFingerprint !== "string" ||
-    (payload.githubReceipt !== undefined &&
-      !parseGitHubReceiptIdentity(payload.githubReceipt))
-  ) {
-    return null;
-  }
-  return { ...payload, operation } as ReceiptReactionPayload;
 }
 
 function githubWebhookIngressPayload(
@@ -34853,203 +34824,17 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
     },
   ): Promise<string[]> {
     if (
-      !["discord", "slack", "telegram", "github"].includes(
-        input.endpoint.provider,
-      )
-    )
-      return [];
-    const runId =
-      input.closedProgressRunId ??
-      (await receiptReactionCompletionRunId(
-        tx,
-        input.publication,
-        input.payload,
-      ));
+      !["discord", "slack", "telegram", "github"].includes(input.endpoint.provider)
+    ) return [];
+    const runId = input.closedProgressRunId ??
+      (await receiptReactionCompletionRunId(tx, input.publication, input.payload));
     if (!runId) return [];
-
-    const receipts = await tx
-      .select({
-        actionId: chatActions.id,
-        deliveryId: chatMessageLinks.deliveryId,
-        payload: chatActions.payload,
-        result: chatActions.result,
-        status: chatActions.status,
-        normalizedEvent: chatDeliveries.normalizedEvent,
-      })
-      .from(heartbeatRuns)
-      .innerJoin(
-        chatMessageLinks,
-        and(
-          eq(chatMessageLinks.companyId, heartbeatRuns.companyId),
-          eq(chatMessageLinks.endpointId, input.publication.endpointId),
-          eq(chatMessageLinks.conversationId, input.publication.conversationId),
-          eq(chatMessageLinks.direction, "inbound"),
-          or(
-            sql`${chatMessageLinks.commentId}::text = ${heartbeatRuns.contextSnapshot} ->> 'wakeCommentId'`,
-            sql`${chatMessageLinks.commentId}::text = ${heartbeatRuns.contextSnapshot} ->> 'commentId'`,
-            sql`coalesce(${heartbeatRuns.contextSnapshot} -> 'wakeCommentIds', '[]'::jsonb) ? ${chatMessageLinks.commentId}::text`,
-          ),
-        ),
-      )
-      .leftJoin(
-        chatDeliveries,
-        and(
-          eq(chatDeliveries.id, chatMessageLinks.deliveryId),
-          eq(chatDeliveries.companyId, chatMessageLinks.companyId),
-          eq(chatDeliveries.endpointId, chatMessageLinks.endpointId),
-          eq(chatDeliveries.conversationId, chatMessageLinks.conversationId),
-          ["slack", "telegram", "github"].includes(input.endpoint.provider)
-            ? eq(chatDeliveries.state, "processed")
-            : undefined,
-        ),
-      )
-      .leftJoin(
-        chatActions,
-        and(
-          eq(chatActions.endpointId, chatMessageLinks.endpointId),
-          eq(chatActions.deliveryId, chatMessageLinks.deliveryId),
-          eq(chatActions.kind, "receipt_reaction"),
-          sql`${chatActions.providerActionId} = 'receipt_reaction:' || ${chatMessageLinks.deliveryId}::text`,
-        ),
-      )
-      .where(
-        and(
-          eq(heartbeatRuns.id, runId),
-          eq(heartbeatRuns.companyId, input.publication.companyId),
-          eq(
-            sql<string>`${heartbeatRuns.contextSnapshot} ->> 'issueId'`,
-            input.publication.issueId,
-          ),
-        ),
-      );
-    const removals = receipts.flatMap((receipt) => {
-      if (!receipt.deliveryId) return [];
-      let payload = receipt.payload
-        ? receiptReactionPayload(receipt.payload)
-        : null;
-      if (
-        input.endpoint.provider === "github" &&
-        payload &&
-        (payload.runtimeGeneration !== input.runtimeContext.generation ||
-          payload.credentialFingerprint !==
-            input.runtimeContext.credentialFingerprint)
-      )
-        return [];
-      if (["slack", "telegram", "github"].includes(input.endpoint.provider)) {
-        // Eyes acknowledge this admitted message, not each model/retry run.
-        // A fast final can win before addReceiptReaction inserts its row.
-        // Persist the one-shot marker from the original admitted source now;
-        // the late add will observe it under the same credential fence.
-        const normalized = receipt.normalizedEvent;
-        if (!normalized) return [];
-        if (input.endpoint.provider === "github") {
-          const originalFence = normalized.runtimeContext as
-            Record<string, unknown> | undefined;
-          if (
-            originalFence?.generation !== input.runtimeContext.generation ||
-            originalFence.credentialFingerprint !==
-              input.runtimeContext.credentialFingerprint
-          )
-            return [];
-        }
-        const acknowledgement = normalized.acknowledgement as
-          Record<string, unknown> | undefined;
-        const message = normalized.message as Record<string, unknown> | undefined;
-        const conversation = normalized.conversation as
-          Record<string, unknown> | undefined;
-        const source = receiptReactionPayload({
-          version: 1,
-          operation: "add",
-          reaction: "eyes",
-          threadId: conversation?.externalThreadId,
-          messageId: message?.providerMessageId,
-          runtimeGeneration: input.runtimeContext.generation,
-          credentialFingerprint: input.runtimeContext.credentialFingerprint,
-        });
-        if (
-          acknowledgement?.receiptReactionSupported !== true ||
-          !source ||
-          (payload &&
-            (payload.threadId !== source.threadId ||
-              payload.messageId !== source.messageId))
-        )
-          return [];
-        payload = source;
-      }
-      if (!payload || payload.operation !== "add") return [];
-      return [
-        {
-          companyId: input.publication.companyId,
-          endpointId: input.publication.endpointId,
-          conversationId: input.publication.conversationId,
-          deliveryId: receipt.deliveryId,
-          kind: "receipt_reaction",
-          providerActionId: `receipt_reaction_remove:${receipt.deliveryId}`,
-          payload: {
-            ...payload,
-            ...(input.endpoint.provider === "github" &&
-            parseGitHubReceiptIdentity(receipt.result?.githubReceipt)
-              ? {
-                  githubReceipt: parseGitHubReceiptIdentity(
-                    receipt.result?.githubReceipt,
-                  )!,
-                }
-              : {}),
-            operation: "remove" as const,
-            runtimeGeneration: input.runtimeContext.generation,
-            credentialFingerprint: input.runtimeContext.credentialFingerprint,
-          } satisfies ReceiptReactionPayload,
-          status: "received",
-        },
-      ];
+    return stageReceiptReactionRemovals(tx, {
+      endpoint: input.endpoint,
+      binding: input.publication,
+      runId,
+      runtimeContext: input.runtimeContext,
     });
-    if (removals.length === 0) return [];
-    const removalDeliveryIds = new Set(
-      removals.map((removal) => removal.deliveryId),
-    );
-    for (const receipt of receipts) {
-      if (
-        !receipt.deliveryId ||
-        !removalDeliveryIds.has(receipt.deliveryId) ||
-        !receipt.actionId ||
-        !receipt.status ||
-        !["received", "failed", "processing"].includes(receipt.status)
-      ) {
-        continue;
-      }
-      await tx
-        .update(chatActions)
-        .set({
-          status: "cancelled",
-          result: {
-            ...(typeof receipt.result?.attempts === "number"
-              ? { attempts: receipt.result.attempts }
-              : {}),
-            code: "receipt_reaction_superseded_by_terminal_publication",
-          },
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(chatActions.id, receipt.actionId),
-            eq(chatActions.status, receipt.status),
-          ),
-        );
-    }
-    await tx.insert(chatActions).values(removals).onConflictDoNothing();
-    return tx
-      .select({ id: chatActions.id })
-      .from(chatActions)
-      .where(
-        and(
-          eq(chatActions.endpointId, input.publication.endpointId),
-          inArray(
-            chatActions.providerActionId,
-            removals.map((removal) => removal.providerActionId),
-          ),
-        ),
-      )
-      .then((rows) => rows.map((row) => row.id));
   }
 
   async function interactionResolutionPublicationToReplace(

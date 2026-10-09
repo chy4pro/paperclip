@@ -555,3 +555,42 @@ accepted `test` and enabled Continue. No GitHub registration was submitted.
 The production Storybook journey covers known organizations and manual entry.
 The repository-wide suite was not repeated for this focused follow-up; its
 previous limitations remain recorded above.
+
+## Mention acknowledgement cleanup — 2026-10-09
+
+The stack already adds eyes when it durably accepts an authorized GitHub
+comment, before queued work executes. Previously, removal waited for the native
+run to finish. A confirmed comment or review-tool publication now stages removal
+in the same transaction as its provider receipt. The existing reaction outbox
+clears the original message independently, retaining retries, credential fences,
+exact source binding and App-owned reaction checks. A late reaction add is
+cancelled if the reply wins the race. Terminal cleanup still handles turns that
+publish no reply; uncertain writes do not count as confirmed delivery.
+
+Live test: the [Gonzo mention](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6083303153)
+was submitted at 14:49:44 UTC. Eyes were observed while Gonzo was queued. Its
+[joke and ASCII animal reply](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6083330049)
+was posted at 14:51:20. Its eyes were gone at 14:51:24 while the same run was
+still running; the native run succeeded at 14:51:31. Banana also received this
+existing subscribed issue thread and replied. Each dedicated App removed only
+its own eyes, leaving Gonzo's reaction intact until Gonzo replied. No subscription,
+identity, permissions, runtime or configuration changes were made.
+
+Evidence: `/private/tmp/github-eyes-live-observations.json`,
+`/private/tmp/github-eyes-pending-20261009.jpg`, and
+`/private/tmp/github-eyes-cleared-20261009.jpg`. The retained test drive remains
+available on port 3110. Description and review-summary mentions still lack
+reaction acknowledgement; this live proof covers a real issue comment.
+
+Verification: 74 focused GitHub workflow and reaction integration cases, plus
+all 34 GitHub receipt/provider stress unit cases passed. Server typecheck and
+build passed. The broader three-file run passed 1,130 cases and failed the
+existing rapid Slack callback-ordering test at its short wait deadline. That
+case also timed out during a concurrent isolated run, then passed by itself on
+both the previous commit `634a7dc53` and this change. The broad run is not claimed
+green. No unrelated Slack code or test timeout was changed. Logs:
+`/private/tmp/github-eyes-regression.log`,
+`/private/tmp/github-eyes-final-targeted.log`,
+`/private/tmp/github-eyes-slack-order-baseline.log`, and
+`/private/tmp/github-eyes-slack-order-final.log`. Repository-wide checks were not
+repeated for this backend follow-up; prior full-suite/CI limitations remain.

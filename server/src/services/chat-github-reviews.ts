@@ -1,3 +1,5 @@
+import { githubRunReplyState } from "./chat-run-publications.js";
+import { stageReceiptReactionRemovals } from "./chat-receipt-reactions.js";
 import {
   GitHubPublicationLeaseLost,
   withGitHubPublicationLease,
@@ -1334,6 +1336,33 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
                 updatedAt: new Date(),
               })
               .where(eq(chatActions.id, action.id));
+            // A confirmed tool reply completes the acknowledgement even while
+            // the model continues its turn. Commit cleanup in the same outbox
+            // transaction; a restart or failed removal is retried independently.
+            if (
+              (await githubRunReplyState(tx as unknown as Db, {
+                companyId: action.companyId,
+                endpointId: action.endpointId,
+                issueId: source.issue.id,
+                runId: source.run.id,
+              })) === "confirmed"
+            ) {
+              await stageReceiptReactionRemovals(tx as unknown as Db, {
+                endpoint: source.endpoint,
+                binding: {
+                  companyId: action.companyId,
+                  endpointId: action.endpointId,
+                  conversationId: source.conversation.id,
+                  issueId: source.issue.id,
+                },
+                runId: source.run.id,
+                runtimeContext: source.delivery.normalizedEvent
+                  .runtimeContext as {
+                  generation: number;
+                  credentialFingerprint: string;
+                },
+              });
+            }
             await logActivity(tx as unknown as Db, {
               companyId: action.companyId,
               actorType: "agent",
