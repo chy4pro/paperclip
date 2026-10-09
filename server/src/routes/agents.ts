@@ -3415,7 +3415,7 @@ export function agentRoutes(
       if (modelAgentId) {
         const modelAgent = await svc.getById(modelAgentId);
         if (!modelAgent || modelAgent.companyId !== companyId) throw notFound("Agent not found");
-        await assertCanUpdateAgent(req, modelAgent);
+        await assertCanReadAgent(req, modelAgent);
       } else await assertCanCreateAgentsForCompany(req, companyId);
       const allowUninstalledShared = !modelAgentId && await canInstallSharedAiConnectionForNewAgent(db, req, companyId, binding);
       const service = aiConnectionService(db);
