@@ -2157,3 +2157,21 @@ Claude/OpenAI receipts, duplicate rejection and exclusion of credential-bearing
 receipts. This is simulated boundary proof, not paid API qualification. The
 prior hosted build and clean npm consumer passed at `e025ff228`; that image
 predates this sidecar correction and must be replaced for live API admission.
+
+### 2026-10-09 bounded hosted Mac fixture lifetime
+
+Current-source PR CI passed all 47 jobs, automated review reached 5/5 with no
+open findings, and the Mac browser control replay passed 38 assertions with
+six visually inspected checkpoints. That replay used a cloud-built binary with
+identical current Rust/runtime source and the freshly compiled sidecar, against
+a scripted no-auth model. It does not qualify paid API behavior.
+
+Linux's revised native fixture passed. The hosted Mac run passed ten native
+checks, then its final aggregate multi-turn journey reached the 150-second
+dependency lifetime and remained in cleanup. This failed run is retained and
+is not counted as Mac qualification. The aggregate lifetime is now five minutes
+inside a six-minute test bound; all behavior/control assertions remain intact.
+A twelve-minute workflow step bound leaves time to retain provenance even
+when test cleanup hangs, within the existing thirty-minute job bound. These
+are verification-only changes; the corrected `cc1a98418` image/runtime source
+is unchanged.
