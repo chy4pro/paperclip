@@ -2,22 +2,23 @@
 
 Current release checklist, updated 2026-10-09 (America/Chicago).
 
-## Current shipping gate: cloud build and v34 qualification
+## Current shipping gate: freeze profile 35 and qualify the cloud build
 
-Frozen **v33 qualification is complete**: all **20/20 Product cells**, all **7/7 protocol cases** (46 assertions), and both ordinary installed local and Daytona canaries pass. These results retain their exact source, fixture, runtime, model and image identities. They do not qualify different runtime bytes.
+Frozen **v33 qualification is complete**: **20/20 Product cells**, **7/7 protocol cases** (46 assertions), and both ordinary installed local and Daytona canaries passed. Those results retain their original build identities and do not qualify different runtime bytes.
 
-The current candidate incorporates master `57e977be72f37dcf31acff64b3e5dcbb64a92cd0`. It preserves mainline Pi/Cursor admission and retains the later Copilot permission, receipt, token and recovery repairs. Copilot remains **1.0.88**, with exact **gpt-5.6-luna** selected for qualification. Copilot **v34** is `sha256:6dde98a9dbadf22f17ca28f133dbe2a65fa199827741190f569704e44bdc20ed`. The changed bound sources require fresh qualification; v33 remains historical release evidence.
+The candidate incorporates master `2bc88ca1c53a9be2d0edbfd31ff8ce60c1ddecad`, including its agent lifecycle services and dependency updates. Copilot remains **1.0.88**, with exact **gpt-5.6-luna** selected for qualification. Copilot **profile 35** is `sha256:6ecb42102c9440e5c8fe5b462b894f9457f255b29f8c584d8b713057cffe4327`. Pi and Cursor retain their current mainline identities. The shared sandbox file matches mainline exactly; Copilot owns its instruction composition.
 
 | Current gate | State |
 |---|---|
-| Current-master integration | Merge conflicts resolved; migration collision uses additive `0320_copilot_defaults.sql`; historical identities retained separately |
-| Build and contracts | Full `pnpm build`, recursive typecheck, shared/database builds and token gates pass |
-| Focused regressions | 224 transport/recovery cases and 123 saved-token connection cases pass; installer contract and remote fixture checks pass; remaining full-suite validation is pending |
-| Cloud image | Build-only OCI artifact mode retains the exact frozen lock, content ID and digest before publication; build, scan and publication pending |
-| Live qualification | Freeze source, v34 profile, model, provider pack, case definitions and image; run exact 20 Product cells and seven protocol cases; verify both ordinary installed canaries |
-| Shipping | Fresh current-head CI/review, separate code-owner approval, normal merge and shipped-build canary pending |
+| Current-master integration | Copilot metadata checks use the current environment-test/lifecycle services; mainline migration 0320 is preserved and Copilot follows with 0321 |
+| Demonstrated blockers | Metadata CLI packaging, Rust fixture identity, exact instruction ownership, read-only model access, durable catalog source and stale pending-admission assertions repaired |
+| Focused verification | Runtime/profile checks: 74 pass, one platform-specific skip; package/shim contracts: 15 pass; ACPX Rust: 28 pass; setup/access/UI: 51 pass; ordinary admission: 95 pass; exact guarded recovery: pass; catalog regeneration: pass |
+| Full validation | Prior full suite retained: 15,880 passed; failures include stale admission assertions, missing system-tool PATH, embedded Postgres bootstrap failures and fixture provider selection. Required checks on the integrated current-master source remain pending |
+| Cloud image | v34 build-only cloud export retained; superseded before publication/live inference by demonstrated repairs. Build and scan the exact profile-35 image in the cloud |
+| Live qualification | Freeze source, profile, model, packs, case definitions and image; require exact 20 Product cells, seven protocol cases, three installed-platform smokes and both ordinary canaries |
+| Shipping | Current-head CI/review, separate code-owner approval, normal merge and shipped-build canary pending |
 
-No unchanged CI rerun remains available for the old v33 run `37829278179`: attempt 2 interrupted server shard 6 after a runner shutdown signal, without an observed assertion failure. The integrated candidate receives fresh CI. Future Docker images build in the cloud. No v34 live result or production rollout is claimed yet.
+No live profile-35 qualification or production rollout is claimed. Failed attempts and original assertions remain retained. Future Docker image builds run in the cloud. The approved budget retains historical exposure and infrastructure holds; it is not reset again. GitHub-attributed native per-run USD remains unknown.
 
 ## Completed frozen v33 qualification
 
