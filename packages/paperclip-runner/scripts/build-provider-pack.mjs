@@ -206,6 +206,7 @@ try {
   writePortableExecutableShim(temporaryRoot, "opencode", "opencode-ai/bin/opencode.exe");
   writePortableCopilotShims(temporaryRoot);
   writePortableNodeShim("acpx", "acpx/dist/cli.js");
+  writePortableNodeShim("paperclip-runner-copilot-metadata-probe", "../dist/cli/copilot-metadata-probe.js");
   writePortableNodeShim(
     "claude-agent-acp",
     "@agentclientprotocol/claude-agent-acp/dist/index.js",
