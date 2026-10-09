@@ -77,6 +77,7 @@ export function OwnSlackAppSetup({ endpoint, stage, disabled, saveDetails, onSav
       try {
         if (!created) await saveDetails();
         if (registration?.status === "failed" || checkedNoApp) requestId.current = crypto.randomUUID();
+        setCheckedNoApp(false);
         next = await chatEndpointsApi.createSlackApp(endpoint.id, {
           requestId: requestId.current,
           credentials: { configurationToken: token },
@@ -93,7 +94,6 @@ export function OwnSlackAppSetup({ endpoint, stage, disabled, saveDetails, onSav
       }
       token = "";
       if (!mounted.current) return;
-      setCheckedNoApp(false);
       onSaved(next);
       const saved = next.setup?.slackRegistration;
       if (!saved?.appId) return;

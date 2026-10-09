@@ -4236,6 +4236,16 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         expect((await f.service.get(f.endpoint.id)).setup.slackRegistration?.status).toBe("configured");
         expect(f.provider.mock.calls.filter(([url]) => String(url).endsWith("apps.manifest.create"))).toHaveLength(1);
       });
+      it("reconnects a rejected manager token without losing pending manifest configuration", async () => {
+        const f = await managedFixture(); f.state.failManifestUpdate = true; await f.provision();
+        expect((await f.service.get(f.endpoint.id)).setup.slackRegistration?.errorCode).toBe("slack_manifest_update_pending");
+        expect((await f.grants.choices(f.companyId, actor)).workspaces).toEqual([]);
+        expect((await f.grants.get(f.grantId, f.companyId, actor)).status).toBe("reauthorize");
+        await f.grants.complete(await f.authorize(), "new-claim", null, actor);
+        f.state.failManifestUpdate = false; await f.provision();
+        expect((await f.service.get(f.endpoint.id)).setup.slackRegistration?.status).toBe("configured");
+        expect(f.provider.mock.calls.filter(([url]) => String(url).endsWith("apps.manifest.create"))).toHaveLength(1);
+      });
       it("does not restore a revoked grant when an in-flight refresh returns", async () => {
         const f = await managedFixture();
         await db.update(chatSlackManagerGrants).set({ expiresAt: new Date(0) }).where(eq(chatSlackManagerGrants.id, f.grantId));

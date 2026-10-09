@@ -45,7 +45,10 @@ export function ManagedSlackSetup({ endpoint, disabled, saveDetails, onSaved, on
     }
     if (!started) await saveDetails();
     if (confirmed || registration?.status === "failed") requestId.current = crypto.randomUUID();
-    const result = await chatEndpointsApi.provisionManagedSlack(endpoint.id, { requestId: requestId.current, grantId, ...(confirmed ? { confirmedNoAppCreated: true } : {}) });
+    const input = { requestId: requestId.current, grantId, ...(confirmed ? { confirmedNoAppCreated: true } : {}) };
+    setConfirmed(false);
+    const result = await chatEndpointsApi.provisionManagedSlack(endpoint.id, input);
+    await choices.refetch();
     onSaved(await chatEndpointsApi.get(endpoint.id));
     if (result.authorization) window.location.assign(result.authorization.authorizationUrl);
   }
@@ -72,7 +75,7 @@ export function ManagedSlackSetup({ endpoint, disabled, saveDetails, onSaved, on
     </div>}
     {!started && <div><Button variant="link" className="h-auto p-0 text-muted-foreground" disabled={busy} onClick={() => void run(onOwnApp)}>Use your own app</Button></div>}
     <SetupWizardFooter onSaveExit={onSaveExit} disabled={busy}>
-      {choices.isError ? <Button onClick={() => void choices.refetch()}>Retry</Button> : <Button disabled={busy || disabled || creating || choices.isPending || !choices.data?.managedAvailable || (workspaces.length > 1 && !grantId) || (uncertain && !confirmed)} onClick={() => void run(connect)}>
+      {choices.isError || !choices.isPending && !choices.data?.managedAvailable ? <Button disabled={busy || choices.isFetching} onClick={() => void choices.refetch()}>Retry</Button> : <Button disabled={busy || disabled || creating || choices.isPending || !choices.data?.managedAvailable || (workspaces.length > 1 && !grantId) || (uncertain && !confirmed)} onClick={() => void run(connect)}>
         {busy && <Loader2 className="size-4 animate-spin" />}{needsAuthorization && started ? "Reconnect Slack" : registration?.appId ? "Continue in Slack" : "Add to Slack"}
       </Button>}
     </SetupWizardFooter>

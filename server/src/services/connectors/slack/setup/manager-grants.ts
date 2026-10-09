@@ -236,15 +236,20 @@ export function createSlackManagerGrants(store: SlackRegistrationStore) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`slack-manager-refresh:${id}`}, 0))`);
       const peers = await tx.select().from(chatSlackManagerGrants).where(and(eq(chatSlackManagerGrants.companyId, companyId), eq(chatSlackManagerGrants.managerAppId, grant.managerAppId), eq(chatSlackManagerGrants.workspaceId, grant.workspaceId))).orderBy(chatSlackManagerGrants.id);
       if (peers.some(peer => Date.parse(peer.rateLimits[method] ?? "") > Date.now())) return { error: providerFailure("slack_setup_rate_limited") };
-      if ((await readGrant(tx, id, companyId, actor)).status !== "active") return { error: providerFailure("slack_manager_reauthorize") };
-      try { return { value: await api(method, fields, authorized.token) }; }
+      const current = await readGrant(tx, id, companyId, actor);
+      if (current.status !== "active") return { error: providerFailure("slack_manager_reauthorize") };
+      try { return { value: await api(method, fields, await secret(current, current.accessSecretId, tx)) }; }
       catch (error) {
         const details = object(object(error).details);
         if (details.code === "slack_setup_rate_limited") {
           const until = new Date(Date.now() + Math.min(Number(details.retryAfterSeconds) || 60, 86_400) * 1000).toISOString();
           for (const peer of peers) await tx.update(chatSlackManagerGrants).set({ rateLimits: sql`${chatSlackManagerGrants.rateLimits} || ${JSON.stringify({ [method]: until })}::jsonb` }).where(eq(chatSlackManagerGrants.id, peer.id));
         }
-        return { error: details.code === "slack_configuration_token_invalid" ? providerFailure("slack_manager_reauthorize") : error };
+        if (details.code === "slack_configuration_token_invalid") {
+          await tx.update(chatSlackManagerGrants).set({ status: "reauthorize", revision: current.revision + 1, updatedAt: new Date() }).where(eq(chatSlackManagerGrants.id, id));
+          return { error: providerFailure("slack_manager_reauthorize") };
+        }
+        return { error };
       }
     });
     if ("error" in result) throw result.error;
