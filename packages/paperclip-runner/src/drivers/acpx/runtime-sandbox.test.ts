@@ -1,4 +1,4 @@
-import { COPILOT_TASK_ORIENTATION_INSTRUCTIONS } from "./copilot-profile.js";
+import { composeCopilotSystemInstructions, COPILOT_TASK_ORIENTATION_INSTRUCTIONS } from "./copilot-profile.js";
 import { configuredEnvironmentProjection } from "../../configured-environment.js";
 import {
   chmod,
@@ -430,7 +430,7 @@ it("refreshes Copilot native instructions privately on every admission, includin
     const sandbox = await prepareAcpxRuntimeSandbox({
       binding: fixture.binding, agent: "copilot", providerPolicy: { readOnly: false, systemInstructions },
     });
-    await refreshCopilotSystemInstructions(sandbox, systemInstructions);
+    await refreshCopilotSystemInstructions(sandbox, composeCopilotSystemInstructions(systemInstructions));
     return sandbox;
   };
   const composed = (value: string) => `${value}\n\n# Paperclip task orientation\n${COPILOT_TASK_ORIENTATION_INSTRUCTIONS}\n`;

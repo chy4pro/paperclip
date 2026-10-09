@@ -67,26 +67,25 @@ it("does not refresh Copilot instructions for a contender rejected by the lifeti
     normalizedSessionId: "same-native-session", runtimeDirectory, workingDirectory,
     providerPolicy: { readOnly: false }, environment: { COPILOT_GITHUB_TOKEN: "synthetic-fixture" },
   };
+  const composed = (value: string) => `${value}\n\n# Paperclip task orientation\n${COPILOT_TASK_ORIENTATION_INSTRUCTIONS}\n`;
   const winner = AcpxRuntimeHost.open({ ...options, systemInstructions: "Winner instructions." }, dependencies);
   // Attach the rejection handler before deliberately releasing the failed launch.
   const winnerResult = expect(winner).rejects.toThrow("fixture stops before native process launch");
   try {
     await winnerEntered;
-    expect(await readFile(instructionPath, "utf8")).toContain(COPILOT_TASK_ORIENTATION_INSTRUCTIONS);
-    expect(await readFile(instructionPath, "utf8")).toContain("Winner instructions.\n");
+    expect(await readFile(instructionPath, "utf8")).toBe(composed("Winner instructions."));
     await expect(AcpxRuntimeHost.open({ ...options, systemInstructions: "Losing contender." }, dependencies))
       .rejects.toThrow("already has an active lease");
     expect(openRuntime).toHaveBeenCalledOnce();
-    expect(await readFile(instructionPath, "utf8")).toContain("Winner instructions.\n");
+    expect(await readFile(instructionPath, "utf8")).toBe(composed("Winner instructions."));
     releaseWinner();
     await winnerResult;
     await expect(AcpxRuntimeHost.open({ ...options, systemInstructions: "New owner instructions." }, dependencies))
       .rejects.toThrow("fixture stops before native process launch");
-    expect(await readFile(instructionPath, "utf8")).toContain(COPILOT_TASK_ORIENTATION_INSTRUCTIONS);
-    expect(await readFile(instructionPath, "utf8")).toContain("New owner instructions.\n");
+    expect(await readFile(instructionPath, "utf8")).toBe(composed("New owner instructions."));
     await expect(AcpxRuntimeHost.open({ ...options, environment: {}, systemInstructions: "Unauthenticated admission." }, dependencies))
       .rejects.toMatchObject({ code: "COPILOT_AUTH_REQUIRED" });
-    expect(await readFile(instructionPath, "utf8")).toContain("New owner instructions.\n");
+    expect(await readFile(instructionPath, "utf8")).toBe(composed("New owner instructions."));
   } finally {
     releaseWinner();
     await winnerResult;
