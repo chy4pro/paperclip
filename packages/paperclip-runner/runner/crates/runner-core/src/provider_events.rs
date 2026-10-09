@@ -735,6 +735,50 @@ fn provider_usage_billing(value: Option<&Value>) -> Option<Value> {
     Some(value.clone())
 }
 
+/// Wire token authority is separate from a provider-reported dollar amount.
+fn provider_token_accounting(value: Option<&Value>) -> Option<Value> {
+    let value = value?;
+    if value.as_object()?.len() != 10
+        || value["schema"] != "paperclip.usage.tokens/v1"
+        || value["source"] != "provider_wire"
+        || value["model"].as_str()?.trim().is_empty()
+        || value["model"].as_str()?.encode_utf16().count() > 240
+        || value["pricingContext"].as_object()?.len() != 2
+        || value["pricingContext"]["serviceTier"] != "standard"
+        || value["pricingContext"]["contextTier"] != "short"
+    {
+        return None;
+    }
+    match (value["biller"].as_str()?, value["protocol"].as_str()?) {
+        ("anthropic", "messages") | ("openai", "responses" | "chat_completions") => {}
+        _ => return None,
+    }
+    let complete = value["complete"].as_bool()?;
+    let requests = value["requestCount"].as_u64()?;
+    let reported = value["reportedRequestCount"].as_u64()?;
+    if requests > 9_007_199_254_740_991 || reported > requests || (complete && reported != requests)
+    {
+        return None;
+    }
+    let tokens = value["tokens"].as_object()?;
+    if tokens.len() != 4 {
+        return None;
+    }
+    let mut total = 0_u64;
+    for key in [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+    ] {
+        total = total.checked_add(tokens.get(key)?.as_u64()?)?;
+    }
+    if total > 9_007_199_254_740_991 || (reported == 0 && total != 0) {
+        return None;
+    }
+    Some(value.clone())
+}
+
 /// Converts Codex app-server notifications into provider-neutral PRP events.
 /// Provider-native envelopes are consumed here and never cross the PRP boundary.
 pub fn normalize_codex_notification(method: &str, params: &Value) -> Vec<NormalizedProviderEvent> {
@@ -1288,6 +1332,9 @@ fn normalize_acpx_status(
         });
         if let Some(billing) = billing {
             usage_payload["billing"] = billing;
+        }
+        if let Some(accounting) = provider_token_accounting(payload.get("tokenAccounting")) {
+            usage_payload["tokenAccounting"] = accounting;
         }
         return vec![NormalizedProviderEvent {
             event_type: "usage.reported".to_owned(),

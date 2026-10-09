@@ -2103,3 +2103,41 @@ EC2 option, maintainer identity checks and immutable target checkout. Model
 credentials are excluded from both build paths. Cloud disk preparation is
 restricted to the disposable GitHub-hosted Linux job and unrelated preinstalled
 SDK directories. No local Docker or Rust build is required.
+
+The first hosted image build passed at source `8b5d075f0c36824599e9a342b5dad8639e45e6f6`:
+[cloud run 37942102345](https://github.com/paperclipai/paperclip/actions/runs/37942102345).
+It published `ghcr.io/paperclipai/paperclip-daytona-runner@sha256:a63deaa768b2b6615497da6e996cd69839c8ceff500b80ea94c5cf1ff906f196`
+and verified its signature, labels and public provider-pack identity. This is
+build evidence, not Daytona execution proof. The previously ineligible EC2 job
+was cancelled without ever receiving a runner; its unknown-cost hold remains.
+
+### 2026-10-09 direct API usage settlement
+
+Native accepted-response counters do not cover all wire attempts, and a native
+model-price estimate is not billed USD. Direct API calls therefore need a
+separate negotiated `paperclip.usage.tokens/v1` receipt. The bridge observes the
+pinned synchronous SDK transport, binds requests to the exact staged key,
+endpoint/protocol/model, keeps disjoint token counts, and requires complete
+terminal usage from every attempt. Retries, truncation, background/async work,
+foreign routes, paid server tools, fast processing and long requests cannot
+silently certify a smaller or free total. Credentials and response content are
+excluded from receipts.
+
+TypeScript, Rust and the durable server path preserve this optional authority.
+The server requires selected biller/model and exact per-turn counters, aggregates
+queued turns without double-counting replay, and rejects unsafe totals or
+protocol switches. Complete direct API usage receives a labeled reviewed
+rate-card estimate. Missing totals remain unknown; provider-work settlement does
+not invent price or usage. OpenRouter's reported-dollar contract is preserved.
+The Anthropic card adds exact Haiku 4.5 and Sonnet 4.6 IDs and conservatively
+uses the one-hour cache-write rate. The OpenAI fixture now selects `gpt-6-luna`,
+confirmed by authenticated model discovery on October 9, with no inference call.
+
+Product E2E now requires correct estimated-cost provenance and healthy budgets
+after Claude/OpenAI API completion. Image and native question/reconnect/local
+Stop catalogs also include both direct API profiles. These are explicit, bounded
+pending cases; registering or unit-testing them is not live qualification.
+The next hosted image build exports its exact image-owned controller pack and
+Linux binary with checksums, avoiding any local Docker pull. The changed bridge
+closures and Rust binary require new independent cloud fixtures and live proof
+before credentials are admitted to the revised runtime.

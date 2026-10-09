@@ -3,25 +3,46 @@ import { runnerMatrix, runnerSuites, suiteDefinitionHash } from "./catalog.js";
 import { buildMatrixJobs, parseRunnerSelectors, selectRunnerExecutions } from "./selectors.js";
 import { buildRunnerE2EProcessEnvironment } from "./harness-env.js";
 import { explicitlyRequestsFileOutput, explicitlyRequestsTaskDocumentOutput } from "../../server/src/services/native-runtime/native-deliverable-feedback.js";
-import { captureHermesApiAccountOwner, captureHermesApiBudgets, captureHermesOpenRouterSettlement, gradeHermesApiConnection, isHermesOpenRouterWorkflow, isHermesConnectionSuite, HERMES_NATIVE_INTERACTION_SUITE, hasExactHermesNativeQuestionResponse, hasHermesNativeQuestionBatch, hermesNativeAnswerText, hasHermesNativeQuestionStop, hasHermesNativeQuestionStopCard, resolveHermesQualificationBudgetCents, HERMES_IMAGE_INPUT_SUITE, HERMES_IMAGE_INPUT_MODEL, hermesImageChallenge, gradeHermesImageInput } from "./hermes-api-connections.js";
+import { captureHermesApiAccountOwner, captureHermesApiBudgets, captureHermesApiSettlement, captureHermesOpenRouterSettlement, gradeHermesApiConnection, isHermesOpenRouterWorkflow, isHermesConnectionSuite, HERMES_NATIVE_INTERACTION_SUITE, hasExactHermesNativeQuestionResponse, hasHermesNativeQuestionBatch, hermesNativeAnswerText, hasHermesNativeQuestionStop, hasHermesNativeQuestionStopCard, resolveHermesQualificationBudgetCents, HERMES_IMAGE_INPUT_SUITE, HERMES_IMAGE_INPUT_MODEL, hermesImageChallenge, gradeHermesImageInput } from "./hermes-api-connections.js";
 import { inflateSync } from "node:zlib";
+
+describe("Hermes direct API billing oracle", () => {
+  it.each(["anthropic", "openai"] as const)("requires a scoped complete %s estimate and healthy post-run budgets", async biller => {
+    const model = biller === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-6-luna";
+    for (const fault of ["valid", "reported", "partial", "model", "biller", "provenance", "paused", "pending"]) {
+      const company = { id: "company", status: "active", budgetMonthlyCents: 200 };
+      const agent = { id: "agent", companyId: "company", status: fault === "paused" ? "paused" : "idle", pauseReason: null, budgetMonthlyCents: 200 };
+      const usage = { provider: biller, biller: fault === "biller" ? "unknown" : biller, model: fault === "model" ? "foreign" : model,
+        billingType: "metered_api", costStatus: fault === "reported" ? "reported" : "estimated", costUsd: 0.0042, costUsdExact: "0.004200000",
+        inputTokens: 40, outputTokens: 10, accountingReceiptReady: true, accountingUsageComplete: fault !== "partial",
+        pricingProvenance: { source: fault === "provenance" ? "agent_claim" : "rate_card",
+          version: biller === "anthropic" ? "anthropic-standard-2026-10-09" : "openai-standard-2026-09-30" } };
+      const run = { id: "run", companyId: "company", agentId: "agent", issueId: "task", status: "succeeded", usageJson: usage,
+        costAccountingPending: fault === "pending", costAccountedAt: "2026-10-09T14:00:00Z" };
+      const receipt = await captureHermesApiSettlement({ companyId: "company", agentId: "agent", issueId: "task", runId: "run", expectedBiller: biller, model,
+        api: { async get<T>(path: string) { return (path === "/api/companies/company" ? company : path === "/api/agents/agent" ? agent : run) as T; } } });
+      expect(receipt.checks.every(check => check.passed), `${biller}: ${fault}`).toBe(fault === "valid");
+    }
+  });
+});
 
 describe("Hermes native image input", () => {
   const suite = runnerSuites.find(s => s.id === HERMES_IMAGE_INPUT_SUITE)!;
   const cells = runnerMatrix.filter(e => e.suite.id === suite.id);
-  it("declares one bounded image journey per execution target on a separate vision model", () => {
-    expect(cells).toHaveLength(2);
+  it("declares bounded OpenRouter, Claude API and OpenAI API image journeys on both targets", () => {
+    expect(cells).toHaveLength(6);
     expect(new Set(cells.map(c => c.environment.id))).toEqual(new Set(["local", "daytona"]));
     expect(suite.manualOnly).toBe(true);
     expect(isHermesConnectionSuite(suite.id)).toBe(true);
-    expect(cells.every(c => c.profile.model === HERMES_IMAGE_INPUT_MODEL && c.profile.credential === "OPENROUTER_API_KEY"
-      && c.profile.qualificationCandidate === "hermes" && c.task.expectedRunCount === 1 && c.task.automaticRetryPolicy === "single_attempt")).toBe(true);
+    expect(new Set(cells.map(c => c.profile.credential))).toEqual(new Set(["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]));
+    expect(cells.every(c => c.profile.qualificationCandidate === "hermes" && c.task.expectedRunCount === 1 && c.task.automaticRetryPolicy === "single_attempt")).toBe(true);
+    expect(cells.filter(c => c.profile.credential === "OPENROUTER_API_KEY").every(c => c.profile.model === HERMES_IMAGE_INPUT_MODEL)).toBe(true);
     expect(selectRunnerExecutions(parseRunnerSelectors(["--all"])).some(c => c.suite.id === suite.id)).toBe(false);
     const env = buildRunnerE2EProcessEnvironment({}, [cells[0]!]);
     expect(JSON.parse(env.PAPERCLIP_RUNNER_ACPX_QUALIFICATION!)).toEqual([{ agent: "hermes", model: HERMES_IMAGE_INPUT_MODEL }]);
     expect(() => buildRunnerE2EProcessEnvironment({}, [{ ...cells[0]!, suite: { ...suite, manualOnly: false } }])).toThrow("explicit");
     expect(() => buildRunnerE2EProcessEnvironment({}, [{ ...cells[0]!, profile: { ...cells[0]!.profile, qualificationCandidate: "pi" } }])).toThrow("explicit");
-    expect(suite.definitionMetadata).toMatchObject({ version: 2, qualification: "pending", providerTurns: 1,
+    expect(suite.definitionMetadata).toMatchObject({ version: 3, qualification: "pending", providerTurns: 1,
       maximumAttemptsPerCell: 1, budgetMonthlyCents: 200 });
   });
   it("keeps the expected code out of prompt, filename and PNG metadata", () => {
@@ -116,15 +137,15 @@ describe("Hermes native browser questions", () => {
     event("runtime_request.resolved", 3, { requestId: "request", turnId: "turn", action: "submit", response }),
   ];
   const grade = (events: unknown[]) => hasExactHermesNativeQuestionResponse({ events, runId: "run", turnId: "turn", requestId: "request", questionSet, response });
-  it("declares three explicit bounded single-attempt cells with local-only Stop ownership proof", () => {
-    expect(cells).toHaveLength(3);
+  it("declares nine explicit bounded API cells with local-only Stop ownership proof", () => {
+    expect(cells).toHaveLength(9);
     expect(suite.manualOnly).toBe(true);
-    expect(cells.filter(cell => cell.task.flow === "native_question_stop").map(cell => cell.environment.id)).toEqual(["local"]);
+    expect(cells.filter(cell => cell.task.flow === "native_question_stop").map(cell => cell.environment.id)).toEqual(["local", "local", "local"]);
     expect(new Set(cells.map(cell => cell.environment.id))).toEqual(new Set(["local", "daytona"]));
     expect(cells.every(cell => cell.profile.qualificationCandidate === "hermes" && ["native_question_completion", "native_question_stop"].includes(cell.task.flow)
       && cell.task.expectedRunCount === 1 && cell.task.automaticRetryPolicy === "single_attempt")).toBe(true);
     expect(suite.definitionMetadata).toMatchObject({ qualification: "pending", providerTurns: 1, maximumAttemptsPerCell: 1, budgetMonthlyCents: 200,
-      lifecycle: "per-turn", nativeMethod: "_hermes/ask_questions", billing: "reported-cost-and-budget-health" });
+      lifecycle: "per-turn", nativeMethod: "_hermes/ask_questions", billing: "reported-openrouter-or-estimated-direct-api-cost-and-budget-health" });
     expect(isHermesConnectionSuite(suite.id)).toBe(true);
     expect(selectRunnerExecutions(parseRunnerSelectors(["--all"])).some(cell => cell.suite.id === suite.id)).toBe(false);
     expect(selectRunnerExecutions(parseRunnerSelectors(["--id", cells[0]!.id]))).toEqual([cells[0]]);

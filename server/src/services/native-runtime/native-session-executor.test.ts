@@ -57,6 +57,8 @@ import {
 } from "../../vendor/paperclip-runner/index.js";
 import * as issueServiceModule from "../issues.js";
 import { NativePermissionDeclinedError } from "./native-permission-decline.js";
+import { priceAnthropicReceipt } from "../anthropic-pricing.js";
+import { priceCodexReceipt } from "../codex-pricing.js";
 import {
   createNativeHarnessBackupStamp,
   verifyNativeHarnessBackupStamp,
@@ -1041,6 +1043,78 @@ describe("native provider usage normalization", () => {
     expect(snapshot.usage).toMatchObject({ accountingCostUsdExact: "0.250000000", accountingCostIncomplete: true,
       billing: { complete: false, amountUsd: 0.25 } });
     expect(nativeUsageCostUsd(snapshot.usage, hermes, "openrouter")).toBe(0.25);
+  });
+  describe("selected-account direct API wire usage", () => {
+    const tokens = { inputTokens: 20, outputTokens: 5, cacheReadTokens: 3, cacheWriteTokens: 2 };
+    const receipt = { schema: "paperclip.usage.tokens/v1", source: "provider_wire", biller: "anthropic", model: "claude-haiku-4-5-20251001", protocol: "messages",
+      complete: true, requestCount: 2, reportedRequestCount: 2, tokens, pricingContext: { serviceTier: "standard", contextTier: "short" } };
+    const directHermes = { ...hermes, model: receipt.model } as NativeExecutionInput["provider"];
+    const event = (eventType: string, turnId: string, payload: object = {}, sourceSeq = 1) => ({
+      eventType, turnId, payload, sourceSeq, sourceInstanceId: "wire-provider",
+    }) as unknown as PrpEvent;
+    const usageEvent = (turnId: string, tokenAccounting: unknown, runDelta: object = tokens, sourceSeq = 2) =>
+      event("item.completed", turnId, { kind: "usage", usage: { runDelta, tokenAccounting } }, sourceSeq);
+    it.each(["anthropic", "openai"] as const)("settles %s tokens across replay and queued turns with an explicit estimate", biller => {
+      const model = biller === "anthropic" ? receipt.model : "gpt-6-luna";
+      const selected = { ...directHermes, model } as NativeExecutionInput["provider"];
+      const authority = { ...receipt, biller, model, protocol: biller === "anthropic" ? "messages" : "chat_completions" };
+      const accounting = createNativeTurnAccounting(selected, biller);
+      accounting.observe(event("turn.started", "first"));
+      const firstUsage = usageEvent("first", authority);
+      accounting.observe(firstUsage); accounting.observe(firstUsage);
+      expect(accounting.snapshot().complete).toBe(false);
+      accounting.observe(event("turn.completed", "first", {}, 3));
+      accounting.observe(event("turn.started", "second", {}, 4));
+      accounting.observe(usageEvent("second", authority, tokens, 5));
+      accounting.observe(event("turn.completed", "second", {}, 6));
+      const snapshot = accounting.snapshot();
+      expect(snapshot).toMatchObject({ complete: true, settlementReady: true, turnId: "second",
+        usage: { runDeltaComplete: true, accountingCostIncomplete: false, tokenAccounting: { complete: true, requestCount: 4, reportedRequestCount: 4,
+          tokens: { inputTokens: 40, outputTokens: 10, cacheReadTokens: 6, cacheWriteTokens: 4 } } } });
+      expect(nativeUsageCostUsd(snapshot.usage, selected, biller)).toBeUndefined();
+      const priced = priceAnthropicReceipt(priceCodexReceipt({ complete: true, usageBasis: "per_run", provider: biller, biller, billingType: "metered_api", model,
+        usage: normalizeNativeUsage(snapshot.usage), pricingContext: authority.pricingContext as { serviceTier: "standard"; contextTier: "short" } }));
+      expect(priced.costStatus).toBe("estimated");
+      expect(priced.pricingProvenance?.source).toBe("rate_card");
+      expect(Number(priced.costUsdExact)).toBeGreaterThan(0);
+    });
+    it.each([
+      undefined, { ...receipt, model: "other-model" }, { ...receipt, biller: "openai", protocol: "responses" },
+      { ...receipt, source: "agent_claim" }, { ...receipt, tokens: { ...tokens, outputTokens: 6 } },
+    ])("keeps unowned or legacy accepted-response counters incomplete (%j)", authority => {
+      const accounting = createNativeTurnAccounting(directHermes, "anthropic");
+      accounting.observe(event("turn.started", "turn"));
+      accounting.observe(usageEvent("turn", authority));
+      accounting.observe(event("turn.completed", "turn", {}, 3));
+      expect(accounting.snapshot()).toMatchObject({ complete: false, settlementReady: false,
+        usage: { runDeltaComplete: false, accountingCostIncomplete: true } });
+    });
+    it("settles owned interrupted work without pricing its known subset or a placeholder zero", () => {
+      const accounting = createNativeTurnAccounting(directHermes, "anthropic");
+      const partial = { ...receipt, complete: false, requestCount: 3, reportedRequestCount: 2 };
+      accounting.observe(event("turn.started", "turn"));
+      accounting.observe(usageEvent("turn", partial, {}));
+      accounting.observe(event("turn.cancelled", "turn", {}, 3));
+      expect(accounting.snapshot()).toMatchObject({ complete: false, settlementReady: true, turnId: "turn",
+        usage: { runDeltaComplete: false, accountingCostIncomplete: true, tokenAccounting: { complete: false, tokens } } });
+      expect(normalizeNativeUsage(accounting.snapshot().usage)).toBeUndefined();
+    });
+    it("refuses to certify an aggregate that switches protocol or overflows safe counters", () => {
+      for (const overflow of [false, true]) {
+        const model = "gpt-6-luna", selected = { ...hermes, model } as NativeExecutionInput["provider"];
+        const accounting = createNativeTurnAccounting(selected, "openai");
+        const counts = overflow ? { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } : tokens;
+        const authority = { ...receipt, biller: "openai", model, protocol: "chat_completions", tokens: counts };
+        accounting.observe(event("turn.started", "first"));
+        accounting.observe(usageEvent("first", authority, counts));
+        accounting.observe(event("turn.completed", "first", {}, 3));
+        accounting.observe(event("turn.started", "second", {}, 4));
+        accounting.observe(usageEvent("second", { ...authority, protocol: overflow ? "chat_completions" : "responses" }, counts, 5));
+        accounting.observe(event("turn.completed", "second", {}, 6));
+        expect(accounting.snapshot()).toMatchObject({ complete: false, usage: { runDeltaComplete: false } });
+        expect(accounting.snapshot().usage).not.toHaveProperty("tokenAccounting");
+      }
+    });
   });
   it.each([
     {}, { inputTokens: 1 }, { outputTokens: 1 },

@@ -451,12 +451,14 @@ export async function runHermesNativeQuestionStop(input: {
     issueId: issue.id, connectionId: fixtures.aiConnection.connectionId, provider: fixtures.aiConnection.binding.provider,
     expectedResponsibleUserId: input.callerUserId, model: execution.profile.model, runs, expectedRunStatus: "cancelled" });
   connectionChecks.forEach(value => check(value.id, value.passed, "Public native model and account attribution remain correct after Stop."));
-  let billing: Awaited<ReturnType<typeof captureHermesOpenRouterSettlement>> | undefined;
+  const expectedBiller = fixtures.aiConnection.binding.provider;
+  if (expectedBiller !== "openrouter" && expectedBiller !== "anthropic" && expectedBiller !== "openai") throw new Error("Unqualified Hermes Stop accounting provider");
+  let billing: Awaited<ReturnType<typeof captureHermesApiSettlement>> | undefined;
   await pollUntil({ label: "cancelled Hermes run billing settlement", deadlineAt: Math.min(deadlineAt, Date.now() + 30_000), intervalMs: 200,
-    load: async () => billing = await captureHermesOpenRouterSettlement({ api, companyId: fixtures.company.id, agentId: fixtures.agent.id,
-      issueId: issue.id, runId: final.run.id, expectedRunStatus: "cancelled" }), accept: receipt => receipt.checks.every(value => value.passed) });
-  billing!.checks.forEach(value => check(value.id, value.passed, "Cancelled native usage settles reported cost while the company and agent retain healthy budgets."));
-  await input.evidence("hermes-openrouter-settlement.json", billing);
+    load: async () => billing = await captureHermesApiSettlement({ api, companyId: fixtures.company.id, agentId: fixtures.agent.id,
+      issueId: issue.id, runId: final.run.id, expectedRunStatus: "cancelled", expectedBiller, model: execution.profile.model }), accept: receipt => receipt.checks.every(value => value.passed) });
+  billing!.checks.forEach(value => check(value.id, value.passed, "Cancelled native usage settles with explicit reported or estimated provenance while budgets remain healthy."));
+  await input.evidence(expectedBiller === "openrouter" ? "hermes-openrouter-settlement.json" : "hermes-api-settlement.json", billing);
   await input.capture("final-state", "Cancelled native question remains unanswerable", "final-state.png");
   await input.evidence("api-state.json", { ...final, runs, run: final.run, checks, processes, nativeStop: identity });
   complete = true;
@@ -500,9 +502,10 @@ export async function captureHermesApiBudgets(input: {
 }
 
 /** Observe settled billing and budget health before fixture cleanup pauses the agent. */
-export async function captureHermesOpenRouterSettlement(input: {
+export async function captureHermesApiSettlement(input: {
   api: { get<T>(path: string): Promise<T> }; companyId: string; agentId: string; issueId: string; runId: string;
   expectedRunStatus?: "succeeded" | "cancelled";
+  expectedBiller: "openrouter" | "anthropic" | "openai"; model?: string;
 }) {
   const [company, agent, run] = await Promise.all([
     input.api.get<Record<string, unknown>>(`/api/companies/${input.companyId}`),
@@ -510,25 +513,34 @@ export async function captureHermesOpenRouterSettlement(input: {
     input.api.get<Record<string, unknown>>(`/api/heartbeat-runs/${input.runId}`),
   ]);
   const usage = record(run.usageJson), provenance = record(usage.pricingProvenance);
+  const direct = input.expectedBiller !== "openrouter";
+  const expectedVersion = input.expectedBiller === "anthropic" ? "anthropic-standard-2026-10-09"
+    : input.expectedBiller === "openai" ? "openai-standard-2026-09-30" : "hermes-openrouter-wire/v1";
   const cost = usage.costUsd, exact = usage.costUsdExact;
   return { observation: {
     company: { id: company.id, status: company.status, pauseReason: company.pauseReason, budgetMonthlyCents: company.budgetMonthlyCents },
     agent: { id: agent.id, companyId: agent.companyId, status: agent.status, pauseReason: agent.pauseReason, budgetMonthlyCents: agent.budgetMonthlyCents },
     run: { id: run.id, companyId: run.companyId, agentId: run.agentId, issueId: run.issueId, status: run.status,
       costAccountingPending: run.costAccountingPending, costAccountedAt: run.costAccountedAt,
-      usage: Object.fromEntries(["provider", "biller", "billingType", "costStatus", "costUsd", "costUsdExact", "inputTokens", "outputTokens", "accountingReceiptReady", "pricingProvenance"].map(key => [key, usage[key]])) },
+      usage: Object.fromEntries(["provider", "biller", "billingType", "model", "costStatus", "costUsd", "costUsdExact", "inputTokens", "outputTokens", "accountingReceiptReady", "accountingUsageComplete", "pricingProvenance"].map(key => [key, usage[key]])) },
   }, checks: [
     { id: "billing-observation-scope", passed: company.id === input.companyId && agent.id === input.agentId && agent.companyId === input.companyId
       && run.id === input.runId && run.companyId === input.companyId && run.agentId === input.agentId && run.issueId === input.issueId },
-    { id: "settled-openrouter-reported-cost", passed: run.status === (input.expectedRunStatus ?? "succeeded") && run.costAccountingPending === false && present(run.costAccountedAt)
-      && usage.accountingReceiptReady === true && usage.biller === "openrouter" && usage.billingType === "metered_api" && usage.costStatus === "reported"
-      && provenance.source === "provider_reported" && provenance.version === "hermes-openrouter-wire/v1"
+    { id: direct ? `settled-${input.expectedBiller}-estimated-cost` : "settled-openrouter-reported-cost", passed: run.status === (input.expectedRunStatus ?? "succeeded") && run.costAccountingPending === false && present(run.costAccountedAt)
+      && usage.accountingReceiptReady === true && usage.biller === input.expectedBiller && usage.billingType === "metered_api" && usage.costStatus === (direct ? "estimated" : "reported")
+      && provenance.source === (direct ? "rate_card" : "provider_reported") && provenance.version === expectedVersion
+      && (!direct || usage.provider === input.expectedBiller && usage.accountingUsageComplete === true && present(input.model) && usage.model === input.model)
       && typeof cost === "number" && Number.isFinite(cost) && cost >= 0 && typeof exact === "string" && /^(0|[1-9][0-9]{0,6})\.[0-9]{9}$/.test(exact) && Number(exact) === cost
       && typeof usage.inputTokens === "number" && Number.isSafeInteger(usage.inputTokens) && usage.inputTokens >= 0
       && typeof usage.outputTokens === "number" && Number.isSafeInteger(usage.outputTokens) && usage.outputTokens >= 0 && usage.inputTokens + usage.outputTokens > 0 },
     { id: "budget-health-after-settlement", passed: company.status === "active" && agent.status === "idle" && agent.pauseReason === null
       && company.budgetMonthlyCents === HERMES_API_CONNECTION_BUDGET_CENTS && agent.budgetMonthlyCents === HERMES_API_CONNECTION_BUDGET_CENTS },
   ] };
+}
+
+/** Preserve the existing OpenRouter oracle's exact reported-price contract. */
+export function captureHermesOpenRouterSettlement(input: Omit<Parameters<typeof captureHermesApiSettlement>[0], "expectedBiller" | "model">) {
+  return captureHermesApiSettlement({ ...input, expectedBiller: "openrouter" });
 }
 
 /** Grade public run/account/model metadata; a model's completion claim cannot supply it. */
@@ -561,7 +573,7 @@ export function gradeHermesApiConnection(input: {
 /** Explicit authenticated catalog choices; none is a production default or live qualification. */
 export const hermesApiConnectionChoices = [
   { provider: "anthropic", credential: "ANTHROPIC_API_KEY", model: "claude-haiku-4-5-20251001" },
-  { provider: "openai", credential: "OPENAI_API_KEY", model: "gpt-5.6-luna" },
+  { provider: "openai", credential: "OPENAI_API_KEY", model: "gpt-6-luna" },
   { provider: "xai", credential: "XAI_API_KEY", model: "grok-4.7" },
   // Google restricts 2.5 models to prior users even when they appear in the catalog.
   // https://ai.google.dev/gemini-api/docs/deprecations

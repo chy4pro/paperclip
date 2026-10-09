@@ -239,6 +239,20 @@ jobs:
                 candidate: candidate === "hermes" ? pack.payload.candidateProviders.hermes : null}));
             ' "$CANDIDATE_PROVIDER" "$SOURCE_SHA" > remote-verification/provider-pack-identity.json
           echo "$immutable" > remote-verification/image.txt
+          # Export the exact image-owned controller assets here in the cloud.
+          # Mac consumers need neither a Docker daemon nor the complete image.
+          runtime_dir="$RUNNER_TEMP/qualification-controller-runtime"
+          mkdir -m 700 "$runtime_dir"
+          container_id="$(docker create --platform linux/amd64 --network none --entrypoint /bin/true "$immutable")"
+          trap 'docker rm "$container_id" >/dev/null' EXIT
+          docker cp "$container_id:/opt/paperclip-runner/provider-pack" "$runtime_dir/provider-pack"
+          docker cp "$container_id:/usr/local/bin/paperclip-runnerd" "$runtime_dir/paperclip-runnerd"
+          (cd "$runtime_dir" && sha256sum paperclip-runnerd provider-pack/provider-pack.json) \
+            > remote-verification/controller-runtime-files.sha256
+          tar -czf remote-verification/controller-runtime.tar.gz -C "$runtime_dir" provider-pack paperclip-runnerd
+          (cd remote-verification && sha256sum controller-runtime.tar.gz > controller-runtime.tar.gz.sha256)
+          docker rm "$container_id" >/dev/null
+          trap - EXIT
           echo "Image: $immutable" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify repository in cloud
         if: inputs.verify_source

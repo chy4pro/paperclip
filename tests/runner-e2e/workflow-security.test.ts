@@ -143,6 +143,11 @@ describe("public repository paid workflow security", () => {
     expect(manual).toContain('pnpm install --resolution-only --ignore-scripts --no-frozen-lockfile');
     expect(manual).toContain('PAPERCLIP_RUNNER_LOCK_SHA256=$lock_sha');
     expect(manual).toContain('docker logout ghcr.io');
+    expect(manual).toContain('docker create --platform linux/amd64 --network none --entrypoint /bin/true "$immutable"');
+    expect(manual).toContain('docker cp "$container_id:/opt/paperclip-runner/provider-pack" "$runtime_dir/provider-pack"');
+    expect(manual).toContain('docker cp "$container_id:/usr/local/bin/paperclip-runnerd" "$runtime_dir/paperclip-runnerd"');
+    expect(manual).toContain('sha256sum paperclip-runnerd provider-pack/provider-pack.json');
+    expect(manual).toContain('sha256sum controller-runtime.tar.gz > controller-runtime.tar.gz.sha256');
   });
 
   it("uses the reviewed master branch for the first-party trusted PR workflow", async () => {

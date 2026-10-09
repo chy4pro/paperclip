@@ -50,14 +50,20 @@ staged there. Actual Daytona namespace behavior remains a qualification
 requirement. Building a provider pack verifies its bytes without probing the
 builder's sandbox; the execution host performs that probe at admission.
 
-Maintainers can build the qualification image on the existing EC2 fleet with
-the **Docker Runner check** workflow. Select `publish_eval_image=true` and
+Maintainers build the qualification image in the cloud with
+the **Docker Runner check** workflow, which defaults to standard GitHub-hosted
+Linux. The existing EC2 fleet remains an explicit option. Select `publish_eval_image=true` and
 `candidate_provider=hermes`, and select the source branch with `target_branch`.
 The workflow resolves that branch to an immutable commit before checkout. The
 image-only job has a 45-minute deadline, includes the pinned Linux runtime,
 signs its digest and verifies public retrieval, image labels and provider-pack
 identity. It uses no model credentials or inference. Its retained artifact
 contains the immutable image reference and verification records.
+It also exports the exact image-owned Linux runner binary and controller
+provider pack, with file and archive SHA-256 records. A Mac controller can
+download and verify that bounded artifact without starting Docker or pulling
+the complete image locally. The export contains public runtime assets only;
+model credentials are excluded.
 
 This image build does not prove that an execution host permits Hermes's sandbox
 namespaces. Actual Daytona tool execution and restore remain separate release
@@ -135,6 +141,17 @@ extend the task's execution deadline.
 - Usage is a per-prompt delta. Clients negotiate `billingReceipts: 1` inside
   `_meta.paperclipHermes`; the optional closed `paperclip.usage.billing/v1`
   receipt remains replay-compatible with older events.
+- Direct Anthropic Messages and OpenAI Chat Completions/Responses clients also
+  negotiate `tokenAccountingReceipts: 1`. The optional closed
+  `paperclip.usage.tokens/v1` receipt binds the selected API account, exact
+  requested model and protocol to all observed synchronous wire attempts,
+  including retries and auxiliary calls. It contains disjoint token buckets,
+  request counts, completeness and verified standard/short pricing context,
+  with no price, prompt, response content or credentials. Only complete,
+  matching receipts can receive Paperclip's labeled rate-card estimate.
+  Anthropic cache-write TTL is unavailable, so estimates use the documented
+  one-hour upper rate. Missing history or older events without this optional
+  authority cannot certify complete direct-API usage. They remain replayable.
 - For the managed OpenRouter Chat Completions route, the bridge observes the
   pinned SDK's wire responses and sums provider-reported `usage.cost`, including
   retries and auxiliary synchronous calls. The receipt carries request counts,
@@ -149,8 +166,9 @@ extend the task's execution deadline.
 - Failed, interrupted, unsupported asynchronous and background delegated work
   leave measurement totals incomplete. Known positive reported subtotals survive, but
   missing charges remain unpriced. Explicit reported zero is accepted only for
-  a complete receipt. Other provider/protocol routes retain their existing
-  unavailable billed-cost behavior. Complete live billing, including delegated
+  a complete receipt. Direct API token authority permits an estimate without
+  claiming provider-reported dollars. Unsupported routes, models, processing
+  tiers, long requests and incomplete attempts stay unpriced. Complete live billing, including delegated
   work, remains a qualification gate; these checks do not qualify a provider.
 - Once the native provider boundary closes, an optional versioned accounting
   settlement can acknowledge that known subtotal even when tokens or charges

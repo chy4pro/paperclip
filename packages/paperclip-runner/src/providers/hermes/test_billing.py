@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
+from anthropic import Anthropic
 from openai import OpenAI
-from billing import MAX_FRAME, TurnBilling, close_turn, fence_background_dispatch, install_billing_capture, start_turn
+from billing import MAX_FRAME, TurnBilling, TokenBilling, close_turn, fence_background_dispatch, install_billing_capture, start_turn
 
 
 def document(cost="0.0042"):
@@ -100,6 +101,96 @@ class Accounting(unittest.TestCase):
             billed, tokens = ledger.finish()
             self.assertFalse(billed["complete"])
             self.assertIsNone(tokens)
+
+
+class DirectTokens(unittest.TestCase):
+    def test_anthropic_chunk_boundaries_merge_final_usage_without_double_counting(self):
+        wire = b''.join(b'data: ' + json.dumps(event).encode() + b'\n\n' for event in [
+            {"type": "message_start", "message": {"usage": {"input_tokens": 12, "output_tokens": 1,
+                "cache_read_input_tokens": 30, "cache_creation_input_tokens": 20}}},
+            {"type": "content_block_delta", "delta": {"text": "private text is not retained"}},
+            {"type": "message_delta", "usage": {"output_tokens": 4}}, {"type": "message_stop"}])
+        for boundary in range(len(wire) + 1):
+            ledger = TokenBilling("anthropic", "claude-haiku-4-5-20251001", "messages")
+            receipt = ledger.begin(); receipt.feed(wire[:boundary]); receipt.feed(wire[boundary:])
+            accounting, tokens = ledger.finish()
+            self.assertTrue(accounting['complete']); self.assertEqual(tokens, (12, 4, 30, 20))
+            self.assertEqual(accounting['source'], 'provider_wire'); self.assertNotIn('amountUsd', accounting)
+            self.assertNotIn('private', json.dumps(accounting))
+
+    def test_openai_chat_and_responses_keep_cached_and_reasoning_tokens_disjoint(self):
+        for protocol, body in [('chat_completions', sse(document())), ('responses', b'data: ' + json.dumps({
+            'type': 'response.completed', 'response': {'status': 'completed', 'service_tier': 'default',
+                'usage': {'input_tokens': 20, 'output_tokens': 5, 'input_tokens_details': {'cached_tokens': 3},
+                    'output_tokens_details': {'reasoning_tokens': 4}}}}).encode() + b'\n\n')]:
+            ledger = TokenBilling('openai', 'gpt-6-luna', protocol)
+            receipt = ledger.begin(); receipt.feed(body)
+            accounting, tokens = ledger.finish()
+            self.assertTrue(accounting['complete'])
+            self.assertEqual(tokens, (15, 5, 3, 2) if protocol == 'chat_completions' else (17, 5, 3, 0))
+            self.assertNotIn('amountUsd', accounting)
+
+    def test_unfinished_retry_background_and_wrong_route_remain_unknown(self):
+        for fail in ['retry', 'truncated', 'background', 'wrong_route', 'long_context', 'fast_tier']:
+            ledger = TokenBilling('openai', 'gpt-6-luna', 'chat_completions')
+            receipt = ledger.begin(fail != 'wrong_route')
+            body = document()
+            if fail == 'long_context': body = body.replace(b'"prompt_tokens":20', b'"prompt_tokens":128006')
+            if fail == 'fast_tier': body = body[:-1] + b',"service_tier":"priority"}'
+            receipt.feed(sse(body) if fail != 'truncated' else b'data: ' + body + b'\n\n')
+            if fail == 'truncated': receipt.eof()
+            if fail == 'retry': ledger.begin().failed()
+            if fail == 'background': ledger.incomplete()
+            accounting, tokens = ledger.finish()
+            self.assertFalse(accounting['complete'], fail); self.assertIsNone(tokens, fail)
+
+    def test_authority_binds_exact_credential_endpoint_protocol_model_and_standard_request(self):
+        ledger = TokenBilling('anthropic', 'fixture-model', 'messages')
+        environment = {'ANTHROPIC_API_KEY': 'synthetic'}
+        def request(url='https://api.anthropic.com/v1/messages', key='synthetic', **body):
+            return httpx.Request('POST', url, headers={'x-api-key': key}, json={'model': 'fixture-model', **body})
+        self.assertTrue(ledger.authorized_request(request(), environment))
+        for wrong in [request(key='foreign'), request(url='https://custom.example/v1/messages'),
+                      request(url='https://api.anthropic.com/v1/messages?route=other'), request(model='other'),
+                      request(speed='fast'), request(inference_geo='us'), request(tools=[{'type':'web_search_20250305'}])]:
+            self.assertFalse(ledger.authorized_request(wrong, environment))
+
+    def test_failed_response_and_missing_anthropic_final_usage_do_not_certify_tokens(self):
+        ledger = TokenBilling('openai', 'fixture-model', 'responses')
+        ledger.begin().json(b'{"status":"failed","usage":{"input_tokens":20,"output_tokens":5}}')
+        self.assertFalse(ledger.finish()[0]['complete'])
+        ledger = TokenBilling('anthropic', 'fixture-model', 'messages')
+        ledger.begin().feed(b'data: {"type":"message_start","message":{"usage":{"input_tokens":20,"output_tokens":1}}}\n\n'
+            b'data: {"type":"message_stop"}\n\n')
+        self.assertFalse(ledger.finish()[0]['complete'])
+
+    def test_real_pinned_anthropic_and_openai_clients_supply_complete_wire_receipts(self):
+        install_billing_capture()
+        for provider, mode in [('anthropic', 'anthropic_messages'), ('openai', 'chat_completions')]:
+            key_name = 'ANTHROPIC_API_KEY' if provider == 'anthropic' else 'OPENAI_API_KEY'
+            ledger = start_turn(SimpleNamespace(provider=provider, api_mode=mode, model='fixture-model'), token_accounting=True)
+            try:
+                if provider == 'anthropic':
+                    body = b''.join(b'data: ' + json.dumps(value).encode() + b'\n\n' for value in [
+                        {'type':'message_start','message':{'id':'fixture','type':'message','role':'assistant','model':'fixture-model','content':[],
+                            'stop_reason':None,'stop_sequence':None,'usage':{'input_tokens':20,'output_tokens':1}}},
+                        {'type':'message_delta','delta':{'stop_reason':'end_turn','stop_sequence':None},'usage':{'output_tokens':5}},
+                        {'type':'message_stop'}])
+                else:
+                    body = sse(document())
+                with patch.dict('os.environ', {key_name:'synthetic-fixture-only'}), httpx.Client(transport=httpx.MockTransport(
+                    lambda request: httpx.Response(200, headers={'content-type':'text/event-stream'}, stream=httpx.ByteStream(body)))) as client:
+                    if provider == 'anthropic':
+                        with Anthropic(http_client=client, api_key='synthetic-fixture-only') as sdk:
+                            list(sdk.messages.create(model='fixture-model', messages=[], max_tokens=8, stream=True))
+                    else:
+                        with OpenAI(http_client=client, api_key='synthetic-fixture-only') as sdk:
+                            list(sdk.chat.completions.create(model='fixture-model', messages=[], stream=True, stream_options={'include_usage':True}))
+                accounting, totals = ledger.finish()
+                self.assertTrue(accounting['complete'], provider)
+                self.assertEqual(totals, (20, 5, 0, 0) if provider == 'anthropic' else (15, 5, 3, 2))
+            finally:
+                close_turn(ledger)
 
 
 class Transport(unittest.TestCase):
