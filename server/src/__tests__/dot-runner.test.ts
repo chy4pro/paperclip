@@ -325,6 +325,23 @@ describe("durable Dot Runner integration", () => {
     await f.events.unsubscribe(f.principal, f.subscription); await f.events.stop();
   }, 30000);
 
+  it.each(["succeeded", "failed", "cancelled", "timed_out"] as const)("fences a stranded %s assignment before new admission without claiming external stop", async status => {
+    const f = await fixture();
+    const { run, assignment } = await offeredWork(f);
+    try {
+      await expect(f.broker.snapshot(f.company.id, f.agent.id, f.snapshot.bindingId)).rejects.toThrow("active assignment");
+      await db.update(heartbeatRuns).set({ status }).where(eq(heartbeatRuns.id, run.id));
+      await f.broker.snapshot(f.company.id, f.agent.id, f.snapshot.bindingId);
+      await f.broker.snapshot(f.company.id, f.agent.id, f.snapshot.bindingId);
+      expect((await db.select().from(dotRunnerAssignments).where(eq(dotRunnerAssignments.id, assignment.id)))[0]?.status).toBe("fenced");
+      const inbox = await f.broker.mailbox(f.principal);
+      const fences = inbox.items.filter(item => item.assignmentId === assignment.id && item.kind === "authority_revoked");
+      expect(fences).toHaveLength(1);
+      expect(fences[0]?.references).toMatchObject({ assignmentId: assignment.id, runId: run.id, externalStopConfirmed: false });
+      await expect(createDotRunnerMcpTools(db).callTool(f.principal, "paperclip_dot_accept", { assignmentId: assignment.id, requestId: randomUUID() })).rejects.toThrow("revoked");
+    } finally { await f.events.unsubscribe(f.principal, f.subscription); await f.events.stop(); }
+  }, 30000);
+
   it("allows paused Dot fence delivery and acknowledgements without task authority", async () => {
     const f = await fixture();
     const { run, assignment } = await offeredWork(f);

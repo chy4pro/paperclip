@@ -181,6 +181,31 @@ function createBroker(db: Db) {
         hasPendingChallenge: !!b.challengeHash && !!b.challengeExpiresAt && b.challengeExpiresAt > new Date(),
         assignment: active ? { ...active, attentionRequired: active.status === "accepted" && active.lastActivityAt.getTime() < Date.now() - 15 * 60_000 } : null };
     },
+    async reconcileTerminalAssignments(companyId: string, agentId: string, bindingId: string) {
+      // A controller can fail before reconnecting to the Runner. Its terminal
+      // run already denies tools, but the mailbox must also retire that offer.
+      // This is an authority fence, never evidence that OpenAI stopped work.
+      return db.transaction(async tx => {
+        const [binding] = await tx.select().from(bindings).where(and(eq(bindings.id, bindingId),
+          eq(bindings.companyId, companyId), eq(bindings.agentId, agentId), isNull(bindings.revokedAt))).for("update");
+        if (!binding) return;
+        const terminal = await tx.select({ assignment: assignments }).from(assignments)
+          .innerJoin(heartbeatRuns, and(eq(heartbeatRuns.id, assignments.runId),
+            eq(heartbeatRuns.companyId, assignments.companyId), eq(heartbeatRuns.agentId, assignments.agentId)))
+          .where(and(eq(assignments.bindingId, binding.id), eq(assignments.bindingGeneration, binding.generation),
+            inArray(assignments.status, ["offered", "accepted"]),
+            inArray(heartbeatRuns.status, ["succeeded", "failed", "cancelled", "timed_out"])));
+        for (const { assignment } of terminal) {
+          await tx.update(assignments).set({ status: "fenced" }).where(eq(assignments.id, assignment.id));
+          await tx.insert(mailbox).values({ companyId, bindingId, bindingGeneration: binding.generation,
+            assignmentId: assignment.id, kind: "authority_revoked", sourceEventId: randomUUID(),
+            references: { assignmentId: assignment.id, runId: assignment.runId, externalStopConfirmed: false } });
+          await logActivity(tx as unknown as Db, { companyId, actorType: "system", actorId: "dot-runner",
+            action: "dot.assignment_fenced", entityType: "agent", entityId: agentId,
+            details: { assignmentId: assignment.id, runId: assignment.runId, reason: "run_terminal", externalStopConfirmed: false } });
+        }
+      });
+    },
     async snapshot(companyId: string, agentId: string, bindingId: string): Promise<DotBindingSnapshot> {
       if (!await enabled()) throw fail("OpenAI Dot is disabled for new work.");
       const state = await this.bindingForAgent(companyId, agentId);
@@ -189,6 +214,7 @@ function createBroker(db: Db) {
       const [grant] = binding?.grantId ? await db.select().from(mcpOauthGrants).where(eq(mcpOauthGrants.id, binding.grantId)) : [];
       if (!grant) throw fail("Dedicated Dot grant is unavailable.");
       await principalBinding({ grant, actor: { type: "agent", agentId, companyId }, company: { id: companyId, name: "", issuePrefix: "", status: "active" } });
+      await this.reconcileTerminalAssignments(companyId, agentId, bindingId);
       const [active] = await db.select({ id: assignments.id }).from(assignments).where(and(eq(assignments.bindingId, bindingId), inArray(assignments.status, ["offered", "accepted"])));
       if (active) throw fail("Dot already has an active assignment. Reconcile it before assigning another task.");
       return { companyId, agentId, bindingId, bindingGeneration: state.generation,
