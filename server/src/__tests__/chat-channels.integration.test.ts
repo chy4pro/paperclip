@@ -4184,8 +4184,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       });
       it("installs a second bot using the same grant without new manager consent", async () => {
         const f = await managedFixture(); await f.provision();
-        const secondBot = "USECONDMANAGED";
-        const secondApp = "ASECONDMANAGED";
+        const secondBot = `${f.botId}SECOND`;
+        const secondApp = `${f.appId}SECOND`;
         const scopes = buildSlackAppManifest({ app: appDetails, agentName: "Maya", webhookUrl: "https://paperclip.example/hook" }).oauth_config.scopes.bot;
         const provider: typeof fetch = async (input, init) => {
           const url = String(input);
