@@ -642,7 +642,10 @@ export async function resolveExecutionRunAdapterConfig(input: {
   // remains the authority there; it probes the sandbox before failing.
   if (
     !input.managedAiCredentials && (input.adapterType ?? null) === "codex_local" &&
-    (input.environmentDriver ?? null) !== "sandbox"
+    (input.environmentDriver ?? null) !== "sandbox" &&
+    // ssh targets are exempt for the same reason: the remote host carries its
+    // own Codex login, which only the adapter can probe once connected.
+    (input.environmentDriver ?? null) !== "ssh"
   ) {
     const resolvedEnv = parseObject(resolvedConfig.env);
     const readiness = await evaluateCodexCredentialReadiness({
