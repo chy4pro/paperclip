@@ -6,6 +6,7 @@ import { watch, lstatSync, readFileSync, readlinkSync, statSync, type FSWatcher 
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Socket } from "node:net";
 import { basename, join, relative } from "node:path";
+import { readLinuxProcessStartedAt } from "../../packages/paperclip-runner/src/live/linux-process-start.js";
 
 export const sha256 = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -87,9 +88,9 @@ function processTable(): ProcessIdentity[] {
     const pid = Number(m[1]);
     if (pid < 2) return [];
     try {
-      // Match hot-restart.readProcessStartedAt, the server's Linux identity
-      // source. ps lstart is rounded and does not identify the same timestamp.
-      const start = process.platform === "linux" ? new Date(lstatSync(`/proc/${pid}`).ctimeMs).toISOString() : m[3]!;
+      // Use the same kernel birth timestamp the server publishes. proc directory
+      // ctime describes lookup metadata, and ps lstart rounds to seconds.
+      const start = process.platform === "linux" ? readLinuxProcessStartedAt(pid) : m[3]!;
       if (bootId) {
         const identity = parseRemoteProcStat(pid, readFileSync(`/proc/${pid}/stat`, "utf8"), bootId);
         if (identity.state === "Z") return [];

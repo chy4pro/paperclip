@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { lstatSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { isPerTurnRunProcess, observeRunProcesses, sameObservedProcess } from "./copilot-local-fixtures.js";
+import { readLinuxProcessStartedAt } from "../../packages/paperclip-runner/src/live/linux-process-start.js";
 
 describe("Copilot local process ownership", () => {
   it("retains the kernel birth identity across proc-directory timestamp changes", () => {
@@ -21,9 +21,7 @@ describe("Copilot local process ownership", () => {
       await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
       const pid = child.pid!;
       await new Promise(resolve => setTimeout(resolve, 1100));
-      // hot-restart.readProcessStartedAt publishes /proc/<pid> ctime on Linux,
-      // which has different semantics and precision from ps's birth time.
-      const startedAt = new Date(lstatSync(`/proc/${pid}`).ctimeMs).toISOString();
+      const startedAt = readLinuxProcessStartedAt(pid);
       const observer = observeRunProcesses();
       const authority = { pid, groupId: pid, startedAt, runId };
       const captured = observer.sample(authority);

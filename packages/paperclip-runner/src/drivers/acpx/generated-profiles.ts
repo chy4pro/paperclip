@@ -48,12 +48,12 @@ export const QUALIFIED_ACPX_PROFILE_DATA = {
     "protocolVersion": 1,
     "acpxVersion": "0.13.1",
     "agent": "copilot",
-    "agentProfileVersion": 35,
+    "agentProfileVersion": 36,
     "agentServerPackage": "@github/copilot",
     "agentServerVersion": "1.0.88",
     "agentRuntimePackage": null,
     "agentRuntimeVersion": null,
-    "commandDigest": "sha256:6ecb42102c9440e5c8fe5b462b894f9457f255b29f8c584d8b713057cffe4327",
+    "commandDigest": "sha256:aaa33c3924582b40831ec0825bf2ca9f3c08842ae5ac56540db4d25019ab5e25",
     "permissionPolicy": "interactive"
   },
   "claude": {
