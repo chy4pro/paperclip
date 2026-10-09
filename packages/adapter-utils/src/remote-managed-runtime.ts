@@ -190,6 +190,17 @@ export async function prepareRemoteManagedRuntime(input: {
         onProgress: input.onProgress,
         progressLabel: asset.key,
       });
+      if (asset.key === "home") {
+        // Third-party ssh workers keep their own Codex login: when the shipped
+        // home carries no auth.json, use the remote host's ~/.codex/auth.json
+        // (mirrors the fallback in codex-auth-merge-extract.sh for sandboxes).
+        const q = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
+        await runSshCommand(
+          input.spec,
+          `[ -f ${q(remoteDir)}/auth.json ] || { [ -f "$HOME/.codex/auth.json" ] && umask 077 && cp "$HOME/.codex/auth.json" ${q(remoteDir)}/auth.json; true; }`,
+          { timeoutMs: 20_000 },
+        );
+      }
     }
   } catch (error) {
     if (preparedWorkspace && baselineSnapshot) {
