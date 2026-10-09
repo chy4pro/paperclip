@@ -336,3 +336,25 @@ Next action: push these narrow corrections, run fresh full CI and review, build
 matching immutable preview artifacts in hosted CI, then qualify the one QA tenant
 after those gates pass. Retain all historical cost and cleanup holds. The draft
 remains neither merge-ready nor production-ready.
+
+At correction `f6a15200c`, fresh review passes 5/5 with all eight threads resolved,
+and the previously failing retry E2E shard passes. One unchanged auth-signal
+fixture exceeded its 15-second test deadline during a cold route import; its
+previous exact version passed on the integrated head. Imports now run in the
+existing setup hook after the same resets, keeping the 15-second assertion
+deadline and all actor/response checks. All 127 affected auth/form/model cases
+pass. A temporary 100ms assertion deadline also passes while setup takes about
+six seconds, confirming the separation. Keyboard coverage moved intact into
+the existing form suite; the PR stays 99 files. This correction changes only
+tests and this record, with the production runtime byte-identical to `f6a15200c`.
+Three hosted server shards were interrupted after passing progress and remain
+incomplete evidence. The new test-only head requires fresh completed CI.
+
+The frozen `f6a15200c` preview image is building remotely; exact-source shared/DB
+preview packages are published and their source metadata verified. The isolated
+local preview restarted at `2026-10-09T16:46:58.859Z`, serving that version with
+startup recovery ready and no pending migrations. Its existing worktree execution
+preference was off; activating it allowed the queued user onboarding response
+to run. The actual legacy Codex task completed and its independently read file
+contained the exact two requested lines. The same-task follow-up is running.
+No second task, agent hire, or automatic runner conversion was used.

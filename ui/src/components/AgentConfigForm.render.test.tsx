@@ -9,7 +9,7 @@ import type { Agent, Environment, UserSecretDefinition } from "@paperclipai/shar
 import { getEnvironmentCapabilities } from "@paperclipai/shared";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastProvider } from "../context/ToastContext";
-import { AgentConfigForm, AdapterLoginPanel, subtractPersistedOverlay, type AdapterLoginDescriptor } from "./AgentConfigForm";
+import { AgentConfigForm, AdapterLoginPanel, ModelDropdown, subtractPersistedOverlay, type AdapterLoginDescriptor } from "./AgentConfigForm";
 import { defaultCreateValues } from "./agent-config-defaults";
 import { buildNewAgentHirePayload } from "../lib/new-agent-hire-payload";
 import { ApiError } from "../api/client";
@@ -1299,6 +1299,33 @@ describe("AgentConfigForm environment selector", () => {
 
     expect(mockAgentsApi.testEnvironment).toHaveBeenCalledTimes(1);
     expect(result.container.textContent).toContain("Network unavailable");
+  });
+
+  it("moves through model options with the same keyboard controls as the harness picker", async () => {
+    const curated = [
+      { id: "claude-fable-5-1", label: "Claude Fable 5.1" },
+      { id: "claude-opus-5-5", label: "Claude Opus 5.5" },
+      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+      { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+    ];
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      await act(() => root.render(<TooltipProvider>
+        <ModelDropdown models={curated} value="" onChange={() => {}} open onOpenChange={() => {}} allowDefault={false} required groupByProvider={false} preserveOrder />
+      </TooltipProvider>));
+      const search = document.body.querySelector("input")!;
+      await act(() => { search.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+      expect(document.activeElement?.textContent).toBe(curated[0].label);
+      await act(() => { document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })); });
+      expect(document.activeElement?.textContent).toBe(curated.at(-1)?.label);
+      await act(() => { document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })); });
+      expect(document.activeElement?.textContent).toBe(curated[0].label);
+    } finally {
+      await act(() => root.unmount());
+      container.remove();
+    }
   });
 
   it("hides the Login button before Test and shows it after the adapter_auth_missing check for a Codex sandbox", async () => {
