@@ -36,15 +36,15 @@ Docker materialization, Git installer, or extra login isolation wholesale.
 ## Current slice: Codex defaults
 
 Authorized 2026-10-09. Canonical branch: `codex/codex-runner-default`.
-Master base: `835a022936ddc7a152b9feab0c0420d02249a6d1`.
+Integration base: master `2dd9811e8be1dab59cccd86cdb25e8953b02fe07`.
 Canonical PR: [draft #15683](https://github.com/paperclipai/paperclip/pull/15683).
-Latest reviewed candidate: `1be8502f27b042566df5fc2d88e46dbcfc8484f3`.
+Latest pushed candidate before integration: `4275309f9d619055f48a9b21cb0ad0a1ff7c2c63`.
 The follow-up fixes configure-on-first-use for an existing built-in that still
 needs setup. The PR remains under 100 files, with no workflow or lockfile
 changes. Fresh final-head CI and review are required after that fix.
 Preview: [isolated Codex QA](http://127.0.0.1:3125), normal dev supervisor,
-separate database. Hosted Linux live onboarding passed at `38199ea8`; execution
-code is unchanged at `1be8502f`. UI changes have separate revision-bound proof.
+separate database. Hosted Linux live onboarding passed at `38199ea8`; it remains
+historical proof after the lifecycle integration. UI has separate revision-bound proof.
 Attended local subscription and managed staging journeys remain unverified.
 
 New Codex agents select Paperclip Runner on qualified Linux x64 targets. Users
@@ -78,13 +78,13 @@ Claude's explicit native fixture is unchanged until its later default PR.
 
 | Area | Owner | Current state |
 | --- | --- | --- |
-| Shared contract, server resolution, setup readiness | Core worker | 394 focused cases and 147 guard/inheritance controls pass; server noemit passes; counts overlap |
+| Shared contract, server resolution, setup readiness | Core worker | Integrated lifecycle: 210 core cases, 109 connection cases and five affected refresh controls pass; server noemit passes; counts overlap |
 | Production create/edit/onboarding UI and stories | UI worker | 171 fresh focused cases, 30 desktop/10 mobile captures and six keyboard checks; built-in follow-up passes 15 cases, UI typecheck and token gates |
-| Built-ins, plugins, approvals, imports/exports, CLI | Creation-path worker | 105 portability, eight approval, three CLI and three asset checks pass; 77 corrected skill-route cases pass; full Linux checks pending on final head |
+| Built-ins, plugins, approvals, imports/exports, CLI | Creation-path worker | Integrated lifecycle: 105 portability, eight approval and three asset cases pass; 73 DB cases skipped on macOS; final Linux checks required |
 | Execution/dev gate, E2E gaps, packaging, live journeys | Lead | Selected Linux onboarding case passes all 13 assertions, actual task/artifact/follow-up and cleanup; 149 public-projection/support cases pass |
-| Full CI and final review | Lead | Native compilation passes at `1be8502f`; main CI is running; its fresh 4/5 review finding is fixed locally, with final-head replay required |
+| Full CI and final review | Lead | All seven known findings fixed/resolved; master lifecycle merge conflicts resolved locally; new combined head needs full CI and fresh review |
 | Local subscription task + follow-up | Lead | Embedded-browser onboarding prepared; attended sign-in unfinished; macOS automatic legacy selection is expected |
-| Managed staging API/subscription onboarding | Lead | Dedicated tenant access, serving revision, snapshot and cleanup ownership unresolved; Fleet Admin needs attended sign-in |
+| Managed staging API/subscription onboarding | Lead | Fleet Admin sign-in completed; dedicated tenant exists, active/awake and pinned to old release; scoped one-hour QA owner access approved; final serving revision/snapshot/runtime/cleanup qualification pending |
 | Shipped npm/Docker/cloud artifacts | Lead | Clean Linux npm consumer passes at the prior candidate: 18 packages, no Codex payloads, host dependency from official npm; final-head replay pending; actual cloud composition is post-merge |
 
 Keep CPU-heavy Rust/Docker builds in hosted CI. Use Node 24, bounded workers,
@@ -220,9 +220,11 @@ proof is in progress. Existing UI verification passed 28 desktop/eight mobile
 renders, six keyboard/footer cases and two touch/wheel journeys. Final CI/review
 must run after this combined follow-up is frozen.
 
-The isolated preview remains [3125](http://127.0.0.1:3125/COD/dashboard).
-Its supervisor now uses the correct port and the backend restarted at
+The isolated preview uses [3125](http://127.0.0.1:3125/COD/dashboard).
+Its supervisor uses the correct port and the prior backend restarted at
 `2026-10-09T15:28:08.305Z`. No user preview or the separate OAuth proxy was stopped.
+The owned supervisor/backend were gracefully paused during lifecycle integration;
+restart and serving-source verification are required before another live journey.
 The first-agent name draft survived reload. The cached local daemon is not proof
 of the new native Rust seams; Linux hosted build/live execution supply that proof.
 Attended subscription login and current access to the dedicated managed staging
@@ -252,6 +254,38 @@ running, with no test failure observed yet.
 Next action: freeze the built-in setup follow-up, require green
 exact-head CI and fresh 5/5 review, and publish sanitized retained evidence when
 operator access is available. Complete the attended and managed staging journeys
-when access is available. The PR stays
+when their remaining resources are ready. The PR stays
 a draft and is neither merge-ready nor production-ready yet. Merge and production
 deployment remain outside authorization.
+
+### 2026-10-09 Current-master lifecycle integration
+
+Master merged [#15631](https://github.com/paperclipai/paperclip/pull/15631) during
+qualification. GitHub blocked the new candidate on nine real merge conflicts.
+The integration preserves master's agent lifecycle ownership. Common runner
+resolution now runs in `prepareAgentHire`; approval activation retains the frozen
+reviewed runner, responsible-user identity and credential restrictions. Existing
+agent updates keep their saved execution. Obsolete source edits were removed,
+and redundant generic API prose was dropped while the agent-creation skill and
+its reference retain the complete runner contract. The diff remains 99 files.
+
+Focused integration checks pass: 210 core, 109 connection, five affected refresh,
+105 portability, eight approval and three built-in asset cases. Counts overlap.
+Server noemit and the existing lifecycle-boundary scanner pass. Shared, DB and
+plugin SDK JavaScript outputs were refreshed without migrations, Rust or Docker.
+The 73 DB-heavy cases were skipped on macOS and require hosted Linux proof.
+The full local route-fixture attempt was interrupted and is incomplete evidence;
+loopback restrictions were identified before its bounded affected-case rerun.
+That unrestricted rerun passes all 61 selected cases; 108 unrelated cases were
+excluded and remain part of required full hosted CI.
+
+The human completed Fleet Admin sign-in. The dedicated QA stack exists and is
+active, awake, healthy and user-managed, so ordinary fleet rollouts skip it.
+It still serves historical Core `2dbe43a4`, not this candidate. The human approved
+one hour of scoped owner access for this QA tenant through the audited admin flow.
+No release change, provider task, new image or fleet-wide action has run here.
+
+Next action: freeze/push the integrated candidate,
+require exact-head CI and fresh 5/5 review, restart the matched local preview and
+qualify the dedicated managed target against that candidate. The previous Linux
+run is retained evidence; it must not be relabeled as the new live measurement.

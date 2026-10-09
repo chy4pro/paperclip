@@ -1,3 +1,4 @@
+import { createAgentLifecycle } from "./agent-lifecycle.js";
 import { agentAppearanceSchema, agentHarnessType, agentRunner, type AgentRunnerChoice } from "@paperclipai/shared";
 import { resolveNewAgentRunnerForCompany } from "./agent-runner-selection.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -3567,6 +3568,7 @@ export function parseGitHubSourceUrl(rawUrl: string) {
 export function companyPortabilityService(db: Db, storage?: StorageService) {
   const companies = companyService(db);
   const agents = agentService(db);
+  const agentsLifecycle = createAgentLifecycle(db);
   const assetRecords = assetService(db);
   const instructions = agentInstructionsService(db);
   const access = accessService(db);
@@ -5687,9 +5689,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             : {};
 
           if (planAgent.action === "update" && planAgent.existingAgentId) {
+            if (pauseAutomations) await agentsLifecycle.pauseAgent(planAgent.existingAgentId, "import");
             let updated = await agents.update(planAgent.existingAgentId, {
               ...patch,
-              ...automationPausePatch,
             });
             if (!updated) {
               warnings.push(`Skipped update for missing agent ${planAgent.existingAgentId}.`);
@@ -5735,7 +5737,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             continue;
           }
 
-          let created = await agents.create(targetCompany.id, {
+          let created = await agentsLifecycle.requestHire(targetCompany.id, {
             ...patch,
             runner: agentRunner(patch.adapterType),
             ...automationPausePatch,
