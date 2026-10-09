@@ -51,7 +51,7 @@ export const DAYTONA_IMAGE_INPUT_PATHS = [
   "packages/paperclip-runner/test/fixtures/copilot-profile-v24-identity.json",
   "packages/paperclip-runner/test/fixtures/copilot-profile-v25-identity.json",
   "packages/paperclip-runner/test/fixtures/copilot-profile-v26-identity.json",
-  "packages/paperclip-runner/test/fixtures/copilot-profile-v34-identity.json",
+  "packages/paperclip-runner/test/fixtures/copilot-profile-v35-identity.json",
   "packages/paperclip-runner/scripts/materialize-cursor-distribution.mjs",
   "packages/paperclip-runner/scripts/cursor-runtime-patch.mjs",
   "packages/paperclip-runner/scripts/build-verified-provider-entrypoints.mjs",
