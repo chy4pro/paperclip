@@ -594,3 +594,41 @@ green. No unrelated Slack code or test timeout was changed. Logs:
 `/private/tmp/github-eyes-slack-order-baseline.log`, and
 `/private/tmp/github-eyes-slack-order-final.log`. Repository-wide checks were not
 repeated for this backend follow-up; prior full-suite/CI limitations remain.
+
+## Explicit mentions override bot subscriptions — 2026-10-09
+
+Banana's existing issue subscription treated a Gonzo-only mention as an ordinary
+follow-up. Both Apps share the Animal Bot agent, so Banana's unwanted run could
+also delay Gonzo. Durable admission now checks exact, case-insensitive handles
+of other non-archived GitHub bots in the same company. A message explicitly
+addressed elsewhere is filtered before task work, agent wakeup or eyes. The
+delivery ledger retains identifiers and the reason without retaining content.
+Duplicate and recovered deliveries use the same decision. Mentioning both bots
+still admits both; plain follow-ups, human mentions and unknown handles retain
+subscription behavior. Automatic event policies remain unchanged.
+
+Live test: the [Gonzo-only request](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6083880345)
+was posted at 15:22:51 UTC. Banana recorded "GitHub message explicitly mentions a
+different connected bot" at 15:23:08 and created no run. Gonzo's
+[single joke and ASCII animal reply](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6083891075)
+arrived at 15:23:29, 38 seconds after the request. Its native run
+`3167e9d4-8154-4b88-af88-0316a1409c84` succeeded at 15:23:41. At the final
+observation, no Banana reply or run existed and no eyes remained. This test did
+not observe the pending eyes interval. Existing subscriptions, identities,
+credentials, configuration and Daytona runtime were preserved.
+
+Evidence: `/private/tmp/github-bot-routing-live-observations.json` and
+`/private/tmp/github-bot-routing-gonzo-only-20261009.jpg`.
+
+Verification: 13 new database-backed cases cover issue, PR and inline-review
+subscriptions, exact handles, both-bot mentions, company/provider/archive
+boundaries, duplicate deliveries and restart recovery. The broader GitHub
+workflow/reaction group passed all 87 cases; three related unit suites passed
+all 61 cases. Server typecheck and build passed. Logs:
+`/private/tmp/github-bot-routing-focused.log`,
+`/private/tmp/github-bot-routing-regression.log`,
+`/private/tmp/github-bot-routing-units.log`,
+`/private/tmp/github-bot-routing-typecheck.log`, and
+`/private/tmp/github-bot-routing-build.log`. Repository-wide checks were not
+repeated; the previously recorded full-suite and current-head CI limitations
+remain. The retained test drive is running on port 3110 with this fix.

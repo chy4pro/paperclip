@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import {
   chatEndpoints,
   chatEndpointResources,
@@ -38,6 +38,31 @@ export function githubBodyMentionsBot(body: string, username: string | null): bo
   if (!name) return false;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?<![\\w-])@${escaped}(?:\\[bot\\])?(?![\\w-])`, "i").test(body);
+}
+
+/**
+ * A thread subscription must not turn a request for another connected bot
+ * into work for this bot. Human mentions still follow ordinary thread policy,
+ * and explicitly mentioning this bot (including alongside another) wins. */
+export async function githubMessageAddressesAnotherBot(
+  db: Db | Parameters<Parameters<Db["transaction"]>[0]>[0],
+  endpoint: Pick<typeof chatEndpoints.$inferSelect, "id" | "companyId" | "botUsername">,
+  body: string,
+): Promise<boolean> {
+  if (!body.includes("@") || githubBodyMentionsBot(body, endpoint.botUsername)) return false;
+  const others = await db
+    .select({ username: chatEndpoints.botUsername })
+    .from(chatEndpoints)
+    .where(
+      and(
+        eq(chatEndpoints.companyId, endpoint.companyId),
+        eq(chatEndpoints.provider, "github"),
+        ne(chatEndpoints.id, endpoint.id),
+        ne(chatEndpoints.status, "archived"),
+        isNotNull(chatEndpoints.botUsername),
+      ),
+    );
+  return others.some((other) => githubBodyMentionsBot(body, other.username));
 }
 
 const mentionPayloadSchema = z.object({

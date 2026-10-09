@@ -2199,6 +2199,94 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       );
       return { ...fixture, ...context, endpoint, principal, management };
     }
+    async function subscribedGitHubFixture(threadId = "github:paperclipai/paperclip:issue:419") {
+      const f = await reviewBotFixture();
+      const thread = makeThread({ channelId: "paperclipai/paperclip", id: threadId }).thread;
+      await deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread,
+        trigger: "mention", message: makeMessage({ id: "41901", text: `@${f.endpoint.botUsername} start this thread`, userId: "42", userName: "octocat", mentioned: true }) });
+      const [conversation] = await db.select().from(chatConversations).where(eq(chatConversations.endpointId, f.endpoint.id));
+      return { ...f, thread, conversation };
+    }
+    async function addPeerGitHubBot(f: Awaited<ReturnType<typeof reviewBotFixture>>) {
+      const peer = await f.service.create(f.companyId, { provider: "github", assignedAgentId: f.assignedAgentId, name: "Gonzo" }, "owner-user");
+      await db.update(chatEndpoints).set({ botUsername: "gonzo[bot]", status: "active" }).where(eq(chatEndpoints.id, peer.id));
+      return peer;
+    }
+    it.each([
+      "github:paperclipai/paperclip:issue:419",
+      "github:paperclipai/paperclip:419",
+      "github:paperclipai/paperclip:419:rc:41899",
+    ])("suppresses subscribed GitHub comments for another connected bot in %s", async threadId => {
+      const f = await subscribedGitHubFixture(threadId);
+      await addPeerGitHubBot(f);
+      const wakeCount = f.wakeup.mock.calls.length;
+      const message = makeMessage({ id: "41902", text: "@GONZO[bot] tell me a joke", userId: "42", userName: "octocat" });
+      const send = () => deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread: f.thread, trigger: "subscribed_message", message });
+      await send(); await send();
+      const rows = await db.select().from(chatDeliveries).where(and(eq(chatDeliveries.endpointId, f.endpoint.id), eq(chatDeliveries.providerEventId, `${threadId}:41902`)));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ state: "filtered", principalId: null, redactedError: "GitHub message explicitly mentions a different connected bot" });
+      expect(rows[0].normalizedEvent).toHaveProperty("filtering.contentRetained", false);
+      expect(JSON.stringify(rows[0].normalizedEvent)).not.toContain("tell me a joke");
+      expect(await db.select().from(issueComments).where(eq(issueComments.issueId, f.conversation.issueId!))).toHaveLength(1);
+      expect(f.wakeup).toHaveBeenCalledTimes(wakeCount);
+      expect(f.runtime.endpoints.get(f.endpoint.id)?.reactions).toEqual([
+        { threadId, messageId: "41901", emoji: "eyes" },
+      ]);
+      expect(await f.service.listActivity(f.endpoint.id)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: "filtered", detail: "GitHub message explicitly mentions a different connected bot" }),
+      ]));
+    });
+    it.each(["Thanks, continue", "@octocat thanks", "@unknown-bot help", "@gonzo-other help", "x@gonzo help"])(
+      "retains subscribed GitHub follow-ups without another exact connected bot mention: %s", async text => {
+        const f = await subscribedGitHubFixture();
+        await addPeerGitHubBot(f);
+        const wakeCount = f.wakeup.mock.calls.length;
+        await deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread: f.thread,
+          trigger: "subscribed_message", message: makeMessage({ id: "41902", text, userId: "42", userName: "octocat" }) });
+        expect(await db.select().from(issueComments).where(eq(issueComments.issueId, f.conversation.issueId!))).toHaveLength(2);
+        expect(f.wakeup).toHaveBeenCalledTimes(wakeCount + 1);
+      },
+    );
+    it("admits a GitHub request explicitly addressed to both connected bots", async () => {
+      const f = await subscribedGitHubFixture();
+      await addPeerGitHubBot(f);
+      const wakeCount = f.wakeup.mock.calls.length;
+      await deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread: f.thread,
+        trigger: "mention", message: makeMessage({ id: "41902", text: `@gonzo @${f.endpoint.botUsername} both help`, userId: "42", userName: "octocat", mentioned: true }) });
+      expect(await db.select().from(issueComments).where(eq(issueComments.issueId, f.conversation.issueId!))).toHaveLength(2);
+      expect(f.wakeup).toHaveBeenCalledTimes(wakeCount + 1);
+    });
+    it.each(["other_company", "other_provider", "archived"])("does not route GitHub mentions using %s identities", async kind => {
+      const f = await subscribedGitHubFixture();
+      const owner = kind === "other_company" ? await seedCompany() : f;
+      const peer = await f.service.create(owner.companyId, { provider: kind === "other_provider" ? "slack" : "github", assignedAgentId: owner.assignedAgentId, name: "Gonzo" }, "owner-user");
+      await db.update(chatEndpoints).set({ botUsername: "gonzo[bot]", status: kind === "archived" ? "archived" : "active" }).where(eq(chatEndpoints.id, peer.id));
+      const wakeCount = f.wakeup.mock.calls.length;
+      await deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread: f.thread,
+        trigger: "subscribed_message", message: makeMessage({ id: "41902", text: "@gonzo help", userId: "42", userName: "octocat" }) });
+      expect(await db.select().from(issueComments).where(eq(issueComments.issueId, f.conversation.issueId!))).toHaveLength(2);
+      expect(f.wakeup).toHaveBeenCalledTimes(wakeCount + 1);
+    });
+    it("rechecks another GitHub bot's mention when recovering a durable subscribed delivery", async () => {
+      const f = await subscribedGitHubFixture();
+      await addPeerGitHubBot(f);
+      const [root] = await db.select().from(chatDeliveries).where(eq(chatDeliveries.endpointId, f.endpoint.id));
+      const providerEventId = `${f.thread.id}:41902`;
+      const [pending] = await db.insert(chatDeliveries).values({
+        companyId: f.companyId, endpointId: f.endpoint.id, providerEventId, deduplicationKey: randomUUID(), eventKind: "message", state: "received",
+        normalizedEvent: { ...root.normalizedEvent, providerEventId, kind: "message", trigger: "subscribed_message",
+          message: { ...(root.normalizedEvent.message as Record<string, unknown>), providerMessageId: "41902", text: "@gonzo this was queued before restart", mentionedBot: false },
+          githubManual: { ...(root.normalizedEvent.githubManual as Record<string, unknown>), event: "comment" } },
+      }).returning();
+      const wakeCount = f.wakeup.mock.calls.length;
+      await f.service.processPendingDeliveries(1, pending.id);
+      const [recovered] = await db.select().from(chatDeliveries).where(eq(chatDeliveries.id, pending.id));
+      expect(recovered.state).toBe("filtered");
+      expect(recovered.normalizedEvent).toHaveProperty("filtering.contentRetained", false);
+      expect(f.wakeup).toHaveBeenCalledTimes(wakeCount);
+      expect(await db.select().from(issueComments).where(eq(issueComments.issueId, f.conversation.issueId!))).toHaveLength(1);
+    });
     async function toolReplyFixture() {
       const f = await reviewBotFixture();
       const thread = makeThread({ channelId: "paperclipai/paperclip", id: "github:paperclipai/paperclip:issue:418" }).thread;

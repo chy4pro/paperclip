@@ -202,6 +202,19 @@ retains the reaction until delivery is confirmed; terminal-run cleanup remains
 the fallback when no reply is published. Admission, repository restrictions and
 credential checks still apply before either reaction operation.
 
+### Explicit bot mentions and subscriptions
+
+A manual message naming another connected GitHub bot in the same company does
+not wake this bot through its thread subscription. Paperclip filters that
+delivery before creating task work or adding an acknowledgement. Explicitly
+mentioning both bots allows both to receive the request, subject to their normal
+authorization and repository checks.
+
+Unaddressed follow-ups, human mentions and unknown handles retain the existing
+subscription behavior. The routing rule does not change automatic issue or PR
+event policies. Archived bots and identities from other companies or providers
+are excluded from the routing lookup.
+
 ## Run projection
 
 The resolved token is leased at run start as an audited class-3 secret and is

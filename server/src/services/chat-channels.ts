@@ -19,7 +19,15 @@ import { buildChatCommunicationGuidance } from "./chat-communication-guidance.js
 function githubPolicyRecord(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 import { githubChatManagementService } from "./chat-github-management.js";
 import { githubReviewCheckService } from "./chat-github-checks.js";
-import { githubAutomaticReviewEvent, githubAutomaticIssueEvent, githubAutomaticAdmission, githubPreviousAssessment, githubBodyMentionsBot, githubExplicitMentionEvent } from "./chat-github-events.js";
+import {
+  githubAutomaticReviewEvent,
+  githubAutomaticIssueEvent,
+  githubAutomaticAdmission,
+  githubPreviousAssessment,
+  githubBodyMentionsBot,
+  githubExplicitMentionEvent,
+  githubMessageAddressesAnotherBot,
+} from "./chat-github-events.js";
 import { githubReviewPrompt, githubManualMessagePrompt } from "./chat-github-review-policy.js";
 import { chatGitHubConfigurations, chatGitHubRegistrations, chatGitHubReviews } from "@paperclipai/db";
 import type { GitHubReviewEventContext, GitHubIssueEventContext, GitHubAutomaticEventContext, GitHubReviewPolicy } from "@paperclipai/shared";
@@ -14822,6 +14830,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           setup: chatEndpoints.setup,
           allowDirectMessages: chatEndpoints.allowDirectMessages,
           allowGroupChats: chatEndpoints.allowGroupChats,
+          botUsername: chatEndpoints.botUsername,
         })
         .from(chatEndpoints)
         .where(eq(chatEndpoints.id, endpoint.id))
@@ -14984,9 +14993,24 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
           resource.availability === "available" &&
           currentEndpoint.allowGroupChats;
       }
-      const accepting = endpointAccepting && destinationAccepting;
+      // GitHub sends the same comment to every installed App. Subscribed
+      // conversations are a fallback for unaddressed replies, not permission
+      // to wake every bot when the person names a different connected App.
+      // Recheck inside durable admission so recovered deliveries follow the
+      // same company-scoped routing decision before any task or reaction.
+      const githubAddressedElsewhere =
+        endpointAccepting &&
+        endpoint.provider === "github" &&
+        !githubAutomatic &&
+        !githubIssue &&
+        (await githubMessageAddressesAnotherBot(tx, {
+          id: endpoint.id,
+          companyId: endpoint.companyId,
+          botUsername: currentEndpoint.botUsername,
+        }, message.text));
+      const accepting = endpointAccepting && destinationAccepting && !githubAddressedElsewhere;
       const redactDestinationDelivery =
-        (!accepting && thread.isDM) ||
+        githubAddressedElsewhere || (!accepting && thread.isDM) ||
         (!thread.isDM &&
           (endpoint.provider === "microsoft-teams" ||
             endpoint.provider === "telegram" ||
@@ -14997,9 +15021,11 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         ? staleActivation
           ? "Connection activation changed before admission"
           : "Connection is not active"
-        : endpoint.provider === "telegram" && !thread.isDM && !addressed
-          ? "Message did not address the agent"
-          : "Destination is not enabled in Paperclip";
+        : githubAddressedElsewhere
+          ? "GitHub message explicitly mentions a different connected bot"
+          : endpoint.provider === "telegram" && !thread.isDM && !addressed
+            ? "Message did not address the agent"
+            : "Destination is not enabled in Paperclip";
       let candidate = admittedDeliveryId
         ? await tx
             .select()
