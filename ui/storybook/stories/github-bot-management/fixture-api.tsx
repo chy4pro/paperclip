@@ -1,6 +1,8 @@
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { buildSkillMentionHref } from "@paperclipai/shared";
+import { EditorAutocompleteProvider } from "@/context/EditorAutocompleteContext";
 import {
   endpoint,
   agent,
@@ -12,7 +14,11 @@ import {
   members,
 } from "./fixtures";
 
-export type FixtureState = "populated" | "empty" | "loading" | "error" | "long" | "many" | "setup";
+export type FixtureState = "populated" | "empty" | "loading" | "error" | "long" | "many" | "setup" | "skills";
+const reviewSkill = {
+  id: "11111111-1111-4111-8111-111111111111", slug: "code-review", name: "Code review",
+  key: "company/company-storybook/code-review", description: "Follow the team's review playbook.",
+};
 /** Only fixture IDs are intercepted. All shell requests use Storybook's shared API fixtures. */
 export function FixtureApi({
   state = "populated",
@@ -39,12 +45,18 @@ export function FixtureApi({
       ], connectionCount: 1, failedConnectionCount: 0,
     });
     client.setQueryData(["github-members", endpoint.companyId], members);
+    client.setQueryData(queryKeys.companySkills.list(endpoint.companyId), [reviewSkill]);
     return client;
   });
   const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     const original = window.fetch;
     let saved = { revision: 2, configuration: structuredClone(configuration) };
+    if (state === "skills") saved.configuration.defaults = {
+      ...saved.configuration.defaults,
+      instructions: `Use [/code-review](${buildSkillMentionHref(reviewSkill.id, reviewSkill.slug)}) when reviewing pull requests.`,
+      invocation: "linked_authors",
+    };
     let repos = structuredClone(resources);
     if (state === "many") repos = Array.from({ length: 1000 }, (_, index) => ({
       ...repos[0], id: `repository-${index}`, providerResourceId: `acme/repository-${String(index).padStart(4, "0")}`,
@@ -158,6 +170,8 @@ export function FixtureApi({
     };
   }, [client, state]);
   return ready ? (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <EditorAutocompleteProvider>{children}</EditorAutocompleteProvider>
+    </QueryClientProvider>
   ) : null;
 }

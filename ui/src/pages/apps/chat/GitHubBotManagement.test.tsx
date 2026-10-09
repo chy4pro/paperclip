@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   defaultGitHubReviewPolicy,
+  buildSkillMentionHref,
   type GitHubChatConfiguration,
   type GitHubTaskReview,
 } from "@paperclipai/shared";
@@ -61,6 +62,14 @@ vi.mock("@/components/MarkdownBody", () => ({
   MarkdownBody: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
+}));
+// Exercise settings persistence through the shared editor contract. The editor's
+// rich rendering and slash picker have their own tests and a live walkthrough.
+vi.mock("@/components/MarkdownEditor", () => ({
+  MarkdownEditor: ({ value, onChange, ariaLabel, placeholder }: {
+    value: string; onChange: (value: string) => void; ariaLabel: string; placeholder?: string;
+  }) => <textarea aria-label={ariaLabel} placeholder={placeholder} value={value}
+    onChange={(event) => onChange(event.target.value)} />,
 }));
 vi.mock("@/lib/router", () => ({
   useParams: () => ({
@@ -496,6 +505,32 @@ describe("GitHub bot management", () => {
       invocation: "mentions_only",
     });
   });
+  it("saves skill links in general and event instructions without resetting other guidance", async () => {
+    await render();
+    const skill = `[/review](${buildSkillMentionHref("11111111-1111-4111-8111-111111111111", "review")})`;
+    await input(container.querySelector('textarea[aria-label="Agent instructions"]')!, `Use ${skill}.`);
+    await input(container.querySelector('select[id$="github-prompt-event"]')!, "mention");
+    await input(container.querySelector('textarea[aria-label="Mention instructions"]')!, `For mentions, use ${skill}.`);
+    await input(container.querySelector('select[id$="github-prompt-event"]')!, "issue_opened");
+    await input(container.querySelector('textarea[aria-label="New issue instructions"]')!, `For issues, use ${skill}.`);
+    await click("Save changes");
+    const saved = mocks.save.mock.calls[0][2];
+    expect(saved.defaults.instructions).toBe(`Use ${skill}.`);
+    expect(saved.defaults.prompts.mention).toBe(`For mentions, use ${skill}.`);
+    expect(saved.defaults.issueOpenedInstructions).toBe(`For issues, use ${skill}.`);
+    expect(saved.defaults.prompts.opened).toBe(base.defaults.prompts.opened);
+    expect(saved.people).toEqual(base.people);
+  });
+  it.each(["mentions_only", "linked_authors", "allowed_authors"] as const)(
+    "makes mentions explicit in the selected %s mode", async (invocation) => {
+      await act(async () => root.render(<TooltipProvider>
+        <GitHubPolicyEditor policy={{ ...base.defaults, invocation }} onChange={() => {}} />
+      </TooltipProvider>));
+      const selector = container.querySelector<HTMLSelectElement>('select[id$="github-invocation"]')!;
+      expect(selector.selectedOptions[0].textContent).toContain("@mentions");
+      expect(container.textContent).toContain("Authorized @mentions work in every mode.");
+    },
+  );
 });
 
 function review(

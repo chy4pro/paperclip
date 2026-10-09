@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { Label } from "@/components/ui/label";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { Link } from "@/lib/router";
@@ -128,16 +129,16 @@ export function GitHubPolicyEditor({
         >
           Instructions
         </h2>
-        <Label htmlFor={`${id}-github-instructions`} className="sr-only">
-          Agent instructions
-        </Label>
-        <Textarea
-          id={`${id}-github-instructions`}
-          className="min-h-32"
+        <MarkdownEditor
+          ariaLabel="Agent instructions"
+          contentClassName="min-h-32"
           value={policy.instructions}
           placeholder="What should this agent do on GitHub?"
-          onChange={(e) => set("instructions", e.target.value)}
+          onChange={(value) => set("instructions", value)}
         />
+        <p className="text-xs text-muted-foreground">
+          Included in every GitHub task. Type / to select a skill for the agent to use.
+        </p>
         <details className="text-sm">
           <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
             Event-specific instructions
@@ -159,20 +160,21 @@ export function GitHubPolicyEditor({
               ))}
               <option value="issue_opened">New issue</option>
             </select>
-            <Textarea
-              aria-label={`${prompt === "issue_opened" ? "New issue" : eventLabels[prompt]} instructions`}
-              className="min-h-32"
+            <MarkdownEditor
+              key={prompt}
+              ariaLabel={`${prompt === "issue_opened" ? "New issue" : eventLabels[prompt]} instructions`}
+              contentClassName="min-h-32"
               value={
                 prompt === "issue_opened"
                   ? (policy.issueOpenedInstructions ?? "")
                   : policy.prompts[prompt]
               }
-              onChange={(e) =>
+              onChange={(value) =>
                 prompt === "issue_opened"
-                  ? set("issueOpenedInstructions", e.target.value)
+                  ? set("issueOpenedInstructions", value)
                   : set("prompts", {
                       ...policy.prompts,
-                      [prompt]: e.target.value,
+                      [prompt]: value,
                     })
               }
             />
@@ -203,17 +205,17 @@ export function GitHubPolicyEditor({
             )
           }
         >
-          <option value="mentions_only">Mentions only</option>
+          <option value="mentions_only">@mentions only</option>
           <option value="linked_authors">
-            Automatic events from linked members
+            @mentions + automatic events from linked members
           </option>
           <option value="allowed_authors">
-            Automatic events from allowed authors
+            @mentions + automatic events from allowed authors
           </option>
         </select>
         <p className="text-xs text-muted-foreground">
-          People allowed in Access can always mention the bot. Automatic events
-          also need to be enabled for each person.
+          Authorized @mentions work in every mode. Automatic events also need
+          “Run automatically” enabled for that person in Access.
         </p>
         {policy.invocation !== "mentions_only" && (
           <div

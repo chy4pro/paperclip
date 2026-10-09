@@ -51,7 +51,7 @@ const meta = {
   argTypes: {
     state: {
       control: "select",
-      options: ["populated", "empty", "loading", "error", "long", "many", "setup"],
+      options: ["populated", "empty", "loading", "error", "long", "many", "setup", "skills"],
     },
   },
   render: ({ state }) => (
@@ -102,6 +102,13 @@ export const ConnectedNoRepositories: Story = {
   args: { state: "empty" },
 };
 export const SettingsJourney: Story = { name: "01 Journey / Settings" };
+export const SkillInstructions: Story = {
+  name: "01 Journey / Instructions — slash skills and automatic events",
+  args: { state: "skills" },
+  parameters: {
+    docs: { description: { story: "The production rich editor preserves a linked skill. Type /code-review to choose it from the shared slash picker; edit event-specific instructions, save, and switch tabs. The automatic-event mode explicitly includes authorized @mentions. Skill execution is verified separately against the live test drive." } },
+  },
+};
 export const AccessJourney: Story = {
   name: "01 Journey / Access",
   parameters: route("access"),

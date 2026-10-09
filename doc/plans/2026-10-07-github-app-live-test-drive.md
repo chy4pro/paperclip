@@ -697,3 +697,46 @@ typechecks and builds passed. Logs: `/private/tmp/github-editable-response-integ
 `/private/tmp/github-editable-response-build.log`. Repository-wide checks were
 not repeated for this follow-up; prior full-suite and current-head CI limitations
 remain. This change adds no schema migration.
+
+## GitHub instruction skills — 2026-10-09
+
+Common and event-specific bot instructions now use the shared Markdown editor
+and company slash-skill picker. Common instructions reach every admitted task;
+event instructions reach only their event. The runtime selects skill keys from
+the admitted configuration snapshot for the current wake, rather than scanning
+GitHub messages or old task comments. Company scope, queued-event snapshots,
+coalesced wakes, and the existing tool/isolation restrictions remain enforced.
+The trigger selector now explicitly says **@mentions + automatic events**;
+authorized mentions work in all modes, with separate per-person automatic-event
+permission in Access.
+
+The first real skill test exposed a native gap: the selected bundle reached the
+runtime, but external chat correctly suppressed the old task description and
+therefore omitted the native skill-selection signal. The native constructor now
+projects only trusted, assigned skill names into that signal, retaining the
+neutral external-chat title and excluding provider-derived skill references.
+The checkpoint contract refreshes retained provider sessions so the current
+selection is available during bootstrap.
+
+For the live test, the shared editor inserted and saved `/github-instruction-smoke`
+in Gonzo's common instructions. Its skill file contained an expected response
+absent from the GitHub request. The initial request produced an honest unavailable
+skill response. After the native fix, the [second request](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6085445382)
+ran as `5ca93e83-d8d8-4f13-b531-678437350497`. The native turn selected the skill,
+read its materialized `SKILL.md` successfully, and posted the [expected response](https://github.com/paperclipai/paperclip-permissions-smoke-20260926-pap57-fee7428e/issues/5#issuecomment-6085451384):
+“The otter has read its playbook.” plus the skill's ASCII animal. The run
+succeeded and publication used the same working comment. Banana filtered the
+request without retaining its content or starting another run. Temporary test
+instructions were restored through the versioned manager API at revision 3;
+the resulting configuration exactly matches the original configuration.
+
+Verification: 88 database-backed GitHub workflow cases, 61 related policy/skill
+units, 66 management/editor UI tests, and 67 native input/checkpoint tests passed
+(three native transport cases were skipped). Server and UI typechecks/builds,
+Storybook build, token gates and diff whitespace checks passed. Logs are
+`/private/tmp/github-instruction-skill-{integration,units,ui-tests,native-tests}.log`
+(the unit log is named `github-instruction-skill-units.log`), with live evidence
+in `/private/tmp/github-instruction-skill-live-v2-evidence.json` and the screenshot
+`/private/tmp/github-instruction-skills-live-result-20261009.jpg`. The broader
+repository suite was not repeated; the earlier full-suite and current-head CI
+limitations still apply. The retained test drive runs on port 3110.

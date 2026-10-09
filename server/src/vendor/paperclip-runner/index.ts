@@ -117,6 +117,7 @@ export const parseCodexTurnDiff = runner.parseCodexTurnDiff;
 export const parseHarnessRuntimeRequestResolution =
   runner.parseHarnessRuntimeRequestResolution;
 export const parseNativeExecutionInput = runner.parseNativeExecutionInput;
+export const buildNativeModelEnvelope = runner.buildNativeModelEnvelope;
 export const isProviderMode = runner.isProviderMode;
 export const parseNativeRuntimeContext = runner.parseNativeRuntimeContext;
 export const parsePaperclipQuestionSet = runner.parsePaperclipQuestionSet;

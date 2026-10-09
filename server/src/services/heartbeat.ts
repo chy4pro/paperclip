@@ -32,6 +32,7 @@ import { settleSlackConversation } from "./slack-conversation-lifecycle.js";
 import { publicChatTaskUrl } from "./chat-task-url.js";
 import { toolActionDeliveryService } from "./tool-action-delivery.js";
 import { githubBotConnectionIdsForRun } from "./chat-github-tools.js";
+import { githubConfiguredInstructionSources } from "./chat-github-review-policy.js";
 import { isBrowserUseConnection } from "./browser-use-client.js";
 import { readQueuedInteractionResponse } from "./queued-interaction-response.js";
 import { AGENT_CHAT_DIRECTIVE, isConversation, isConversationExecutionWake, isWaitingConversation, prepareConversationTurn, settleConversationTurn } from "./agent-conversations.js";
@@ -2011,10 +2012,11 @@ export function computeBoundedTransientHeartbeatRetrySchedule(
   };
 }
 
-async function resolveRunScopedMentionedSkillKeys(input: {
+export async function resolveRunScopedMentionedSkillKeys(input: {
   db: Db;
   companyId: string;
   issueId: string | null;
+  commentIds?: string[];
 }): Promise<string[]> {
   if (!input.issueId) return [];
 
@@ -2030,21 +2032,51 @@ async function resolveRunScopedMentionedSkillKeys(input: {
     .then((rows) => rows[0] ?? null);
   if (!issue) return [];
 
-  const comments = await input.db
-    .select({ body: issueComments.body })
-    .from(issueComments)
-    .where(
-      and(
+  let sources: string[];
+  const githubConversations = await input.db.select({ id: chatConversations.id })
+    .from(chatConversations)
+    .innerJoin(chatEndpoints, and(
+      eq(chatEndpoints.companyId, chatConversations.companyId),
+      eq(chatEndpoints.id, chatConversations.endpointId),
+    ))
+    .where(and(
+      eq(chatConversations.companyId, input.companyId),
+      eq(chatConversations.issueId, input.issueId),
+      eq(chatEndpoints.provider, "github"),
+    ));
+  if (githubConversations.length) {
+    const binding = and(
+      eq(chatDeliveries.companyId, input.companyId),
+      inArray(chatDeliveries.conversationId, githubConversations.map((row) => row.id)),
+      eq(chatDeliveries.state, "processed"),
+    );
+    const admitted = () => input.db.select({ event: chatDeliveries.normalizedEvent })
+      .from(chatDeliveries)
+      .innerJoin(chatMessageLinks, and(
+        eq(chatMessageLinks.companyId, chatDeliveries.companyId),
+        eq(chatMessageLinks.endpointId, chatDeliveries.endpointId),
+        eq(chatMessageLinks.deliveryId, chatDeliveries.id),
+        eq(chatMessageLinks.conversationId, chatDeliveries.conversationId),
+        eq(chatMessageLinks.direction, "inbound"),
+      ));
+    const forComments = input.commentIds?.length
+      ? await admitted().where(and(binding, inArray(chatMessageLinks.commentId, input.commentIds)))
+      : [];
+    // Interaction continuations and board wakes have no inbound comment id.
+    // Retain the latest admitted configuration, never provider-derived text.
+    const rows = forComments.length ? forComments : await admitted().where(binding)
+      .orderBy(desc(chatDeliveries.createdAt), desc(chatDeliveries.id)).limit(1);
+    sources = rows.flatMap((row) => githubConfiguredInstructionSources(row.event));
+  } else {
+    const comments = await input.db.select({ body: issueComments.body }).from(issueComments)
+      .where(and(
         eq(issueComments.issueId, input.issueId),
         eq(issueComments.companyId, input.companyId),
         isNull(issueComments.deletedAt),
-      ),
-    );
-  const mentionedSkillIds = extractMentionedSkillIdsFromSources([
-    issue.title,
-    issue.description ?? "",
-    ...comments.map((comment) => comment.body),
-  ]);
+      ));
+    sources = [issue.title, issue.description ?? "", ...comments.map((comment) => comment.body)];
+  }
+  const mentionedSkillIds = extractMentionedSkillIdsFromSources(sources);
   if (mentionedSkillIds.length === 0) return [];
 
   const skillRows = await input.db
@@ -21731,6 +21763,7 @@ export function heartbeatService(
           db,
           companyId: agent.companyId,
           issueId,
+          commentIds: extractWakeCommentIds(context),
         });
       const runScopedSkillKeys =
         acceptedPlanContinuationWake &&
@@ -24234,6 +24267,7 @@ export function heartbeatService(
                     initialCommunicationGuidance: nativeReviewRequest ? null : readNonEmptyString(context.paperclipTaskCommunicationGuidance),
                     wakePayload: context.paperclipWake,
                     turnContext: context.paperclipTurnContext,
+                    githubInstructionSkillKeys: runScopedMentionedSkillKeys,
                     resumedSession,
                     previousTurn: (() => {
                       if (!previousNativeRun || nativeReviewRequest) return null;

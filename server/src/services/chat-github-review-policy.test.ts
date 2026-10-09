@@ -8,6 +8,8 @@ import {
 } from "@paperclipai/shared";
 import {
   githubManualMessagePrompt,
+  githubConfiguredInstructionSources,
+  GITHUB_CONFIGURED_SKILL_GUIDANCE,
   githubReviewPrompt,
   githubReviewConclusion,
   githubReviewLineIsInPatch,
@@ -32,6 +34,34 @@ const context: GitHubReviewEventContext = {
   draft: false,
   labels: [],
 };
+
+describe("configured GitHub instruction skills", () => {
+  it.each(["mention", "comment"] as const)("uses only configured %s instructions", (event) => {
+    const policy = defaultGitHubReviewPolicy();
+    expect(githubConfiguredInstructionSources({ githubManual: { policy, event }, message: "untrusted /skill" }))
+      .toEqual([policy.instructions, policy.prompts[event]]);
+  });
+  it("selects only the current automatic event and common instructions", () => {
+    const policy = { ...defaultGitHubReviewPolicy(), issueOpenedInstructions: "Handle issues." };
+    expect(githubConfiguredInstructionSources({ githubAutomatic: { context, policy } }))
+      .toEqual([policy.instructions, policy.prompts.opened]);
+    expect(githubConfiguredInstructionSources({ githubIssue: { context: { body: "untrusted /skill" }, policy } }))
+      .toEqual([policy.instructions, policy.issueOpenedInstructions]);
+    expect(githubConfiguredInstructionSources({ message: "untrusted /skill", raw: { policy } })).toEqual([]);
+  });
+  it("includes skill guidance and saved skill links before provider context in both prompt paths", () => {
+    const policy = { ...defaultGitHubReviewPolicy(), instructions: "Use [/review](paperclip://skills/11111111-1111-4111-8111-111111111111?slug=review)." };
+    const manual = githubManualMessagePrompt({ event: "mention", policy, repository: "test/repo", thread: "thread", sender: context.sender, message: "untrusted text" });
+    const automatic = githubReviewPrompt(context, policy, 1);
+    for (const prompt of [manual, automatic]) {
+      expect(prompt).toContain(GITHUB_CONFIGURED_SKILL_GUIDANCE);
+      expect(prompt).toContain(policy.instructions);
+      expect(prompt.indexOf(policy.instructions)).toBeLessThan(prompt.indexOf(JSON.stringify(manual === prompt
+        ? { repository: "test/repo", thread: "thread", sender: context.sender, message: "untrusted text" }
+        : context)));
+    }
+  });
+});
 
 it("validates inline findings against the correct side of each diff hunk", () => {
   const patch =

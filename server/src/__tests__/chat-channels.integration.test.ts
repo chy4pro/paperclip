@@ -75,6 +75,7 @@ import {
   companySecrets,
   companies,
   companyMemberships,
+  companySkills,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -160,6 +161,7 @@ import {
 import {
   heartbeatService,
   resolveExternalChatWakeProvider,
+  resolveRunScopedMentionedSkillKeys,
 } from "../services/heartbeat.js";
 import {
   registerServerAdapter,
@@ -2241,6 +2243,54 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       await db.update(chatEndpoints).set({ botUsername: "gonzo[bot]", status: "active" }).where(eq(chatEndpoints.id, peer.id));
       return peer;
     }
+    it("loads only the current configured instruction skills, never provider links or another company", async () => {
+      const f = await reviewBotFixture();
+      const other = await seedCompany();
+      const skill = async (name: string, companyId = f.companyId) => db.insert(companySkills).values({
+        companyId, key: `company/${companyId}/${name}`, slug: name, name, markdown: `# ${name}`,
+      }).returning().then((rows) => rows[0]);
+      const common = await skill("common");
+      const mention = await skill("mention");
+      const next = await skill("next");
+      const injected = await skill("injected");
+      const foreign = await skill("foreign", other.companyId);
+      // Use the production link format, including the slash picker identity.
+      const { buildSkillMentionHref } = await import("@paperclipai/shared");
+      const ref = (s: typeof common) => `[/skill](${buildSkillMentionHref(s.id, s.slug)})`;
+      const saved = await f.management.configuration(f.endpoint.id, "owner-user");
+      await f.management.saveConfiguration(f.endpoint.id, { expectedRevision: saved.revision, configuration: {
+        ...saved.configuration, defaults: { ...saved.configuration.defaults,
+          instructions: `Use ${ref(common)} and ${ref(foreign)}.`,
+          prompts: { ...saved.configuration.defaults.prompts, mention: `Use ${ref(mention)}.`, opened: ref(injected) },
+        },
+      } }, "owner-user");
+      const thread = makeThread({ channelId: "paperclipai/paperclip", id: "github:paperclipai/paperclip:issue:419" }).thread;
+      await deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread,
+        trigger: "mention", message: makeMessage({ id: "41901", text: `@${f.endpoint.botUsername} ${ref(injected)}`, userId: "42", userName: "octocat", mentioned: true }) });
+      const [conversation] = await db.select().from(chatConversations).where(eq(chatConversations.endpointId, f.endpoint.id));
+      const [comment] = await db.select().from(issueComments).where(eq(issueComments.issueId, conversation.issueId!));
+      const args = { db, companyId: f.companyId, issueId: conversation.issueId!, commentIds: [comment.id] };
+      expect(await resolveRunScopedMentionedSkillKeys(args)).toEqual([common.key, mention.key]);
+      expect(comment.body).toContain(ref(common));
+      expect(comment.body).toContain(ref(mention));
+      expect(comment.body).toContain(ref(injected)); // Present as untrusted context, never assigned.
+      expect(await resolveRunScopedMentionedSkillKeys({ ...args, companyId: other.companyId })).toEqual([]);
+      const changed = await f.management.configuration(f.endpoint.id, "owner-user");
+      await f.management.saveConfiguration(f.endpoint.id, { expectedRevision: changed.revision, configuration: {
+        ...changed.configuration, defaults: { ...changed.configuration.defaults, instructions: ref(next),
+          prompts: { ...changed.configuration.defaults.prompts, comment: "Answer briefly." },
+        },
+      } }, "owner-user");
+      await deliverMessage({ callbacks: f.callbacks, endpointId: f.endpoint.id, provider: "github", thread,
+        trigger: "subscribed_message", message: makeMessage({ id: "41902", text: ref(injected), userId: "42", userName: "octocat" }) });
+      const all = await db.select().from(issueComments).where(eq(issueComments.issueId, conversation.issueId!)).orderBy(asc(issueComments.createdAt));
+      expect(all).toHaveLength(2);
+      expect(await resolveRunScopedMentionedSkillKeys({ ...args, commentIds: [all[1].id] })).toEqual([next.key]);
+      // A later event must not change the snapshot for a queued older wake.
+      expect(await resolveRunScopedMentionedSkillKeys(args)).toEqual([common.key, mention.key]);
+      expect(await resolveRunScopedMentionedSkillKeys({ ...args, commentIds: all.map((c) => c.id) })).toEqual(expect.arrayContaining([common.key, mention.key, next.key]));
+      expect(await resolveRunScopedMentionedSkillKeys({ ...args, commentIds: [] })).toEqual([next.key]);
+    });
     it.each([
       "github:paperclipai/paperclip:issue:419",
       "github:paperclipai/paperclip:419",
@@ -4224,6 +4274,12 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     it("admits opt-in signed issue events without PR checks, deduplicates them and rechecks revoked policy", async () => {
       const f = await reviewBotFixture();
+      const { buildSkillMentionHref } = await import("@paperclipai/shared");
+      const [skill] = await db.insert(companySkills).values({
+        companyId: f.companyId, key: `company/${f.companyId}/automatic-playbook`,
+        slug: "automatic-playbook", name: "Automatic playbook", markdown: "# Automatic playbook",
+      }).returning();
+      const instruction = `Use [/automatic-playbook](${buildSkillMentionHref(skill.id, skill.slug)}).`;
       const payload = {
         action: "opened", installation: { id: 2468 },
         repository: { id: 97531, full_name: "paperclipai/paperclip", name: "paperclip", owner: { id: 1357, login: "paperclipai" } },
@@ -4238,7 +4294,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const saved = await f.management.configuration(f.endpoint.id, "owner-user");
       await f.management.saveConfiguration(f.endpoint.id, {
         expectedRevision: saved.revision,
-        configuration: { ...saved.configuration, defaults: { ...saved.configuration.defaults, issueOpened: true, issueOpenedInstructions: "Reply with an ASCII animal." } },
+        configuration: { ...saved.configuration, defaults: { ...saved.configuration.defaults, instructions: instruction, issueOpened: true, issueOpenedInstructions: "Reply with an ASCII animal." } },
       }, "owner-user");
       const delivery = randomUUID();
       expect((await send(delivery)).status).toBeLessThan(300);
@@ -4250,6 +4306,9 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       expect(conversation.providerUrl).toBe("https://github.com/paperclipai/paperclip/issues/83");
       const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, task.id));
       expect(comments).toHaveLength(1);
+      expect(comments[0].body).toContain(instruction);
+      expect(comments[0].body).toContain("Read the SKILL.md");
+      expect(await resolveRunScopedMentionedSkillKeys({ db, companyId: f.companyId, issueId: task.id, commentIds: [comments[0].id] })).toEqual([skill.key]);
       expect(comments[0].body).toContain("Reply with an ASCII animal.");
       expect(comments[0].body).toContain("Untrusted GitHub issue context");
       expect(await db.select().from(chatGitHubReviews).where(eq(chatGitHubReviews.endpointId, f.endpoint.id))).toHaveLength(0);
@@ -4288,6 +4347,16 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     });
     it("admits signed PR events into an ordinary assigned task and deduplicates delivery", async () => {
       const f = await reviewBotFixture();
+      const { buildSkillMentionHref } = await import("@paperclipai/shared");
+      const [skill] = await db.insert(companySkills).values({
+        companyId: f.companyId, key: `company/${f.companyId}/automatic-playbook`,
+        slug: "automatic-playbook", name: "Automatic playbook", markdown: "# Automatic playbook",
+      }).returning();
+      const instruction = `Use [/automatic-playbook](${buildSkillMentionHref(skill.id, skill.slug)}).`;
+      const saved = await f.management.configuration(f.endpoint.id, "owner-user");
+      await f.management.saveConfiguration(f.endpoint.id, { expectedRevision: saved.revision, configuration: {
+        ...saved.configuration, defaults: { ...saved.configuration.defaults, instructions: instruction },
+      } }, "owner-user");
       const delivery = randomUUID();
       const payload = {
         action: "opened",
@@ -4359,6 +4428,9 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .select()
         .from(issueComments)
         .where(eq(issueComments.issueId, task.id));
+      expect(comments[0].body).toContain(instruction);
+      expect(comments[0].body).toContain("Read the SKILL.md");
+      expect(await resolveRunScopedMentionedSkillKeys({ db, companyId: f.companyId, issueId: task.id, commentIds: [comments[0].id] })).toEqual([skill.key]);
       expect(comments[0].body).toContain("untrusted provider data");
       expect(comments[0].authorUserId).toBe("owner-user");
       const [run] = await db.insert(heartbeatRuns).values({

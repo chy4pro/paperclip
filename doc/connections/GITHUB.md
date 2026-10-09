@@ -10,12 +10,29 @@ only in its existing encrypted secret system.
 **GitHub** connects an account for repository tools, Git, and `gh`, and opens
 Access → Connect directly. **GitHub Code Review Bot** connects one agent to a
 GitHub App for pull-request reviews and mentions, and opens Choose agent directly.
-The bot entry follows the Chat Connectors experimental setting.
+The bot entry follows its own GitHub Review Bots experimental setting.
 
 Both entries reuse the existing GitHub integrations. Bot endpoints retain the
 `github` provider identity and existing setup, reconnect, and management URLs;
 saved bot connections and drafts appear under GitHub Code Review Bot. GitHub
 repository and MCP URLs still resolve to the ordinary GitHub tool connection.
+
+## Bot instructions and triggers
+
+Bot Settings uses the shared Markdown editor for common and event-specific
+instructions. Type `/` and select a company skill to insert a saved skill link.
+Common instructions accompany every admitted GitHub task; event-specific
+instructions accompany that event. Selected skills are materialized for the run
+and explicitly invoked by the native Runner, subject to existing tool and
+isolation restrictions. The admitted configuration snapshot determines skill
+selection for each wake, including queued events. GitHub messages, repository
+content and other companies' skills cannot assign skills to the run.
+
+Authorized @mentions work in every invocation mode. Choosing **@mentions +
+automatic events** adds the configured PR or issue events; it does not disable
+mentions. Automatic events additionally require **Run automatically** for the
+GitHub author in Access. Member and external-contributor authorization still
+applies to both kinds of request.
 
 ## Self-hosted setup
 

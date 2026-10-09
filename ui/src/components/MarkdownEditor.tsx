@@ -82,6 +82,7 @@ export interface MentionOption {
 interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
+  ariaLabel?: string;
   placeholder?: string;
   className?: string;
   contentClassName?: string;
@@ -708,6 +709,7 @@ function applyMention(markdown: string, state: MentionState, option: Autocomplet
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(function MarkdownEditor({
   value,
   onChange,
+  ariaLabel,
   placeholder,
   className,
   contentClassName,
@@ -1336,6 +1338,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         </div>
         <textarea
           ref={fallbackTextareaRef}
+          aria-label={ariaLabel}
           value={value}
           placeholder={placeholder}
           readOnly={readOnly}
@@ -1473,6 +1476,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       <MarkdownEditorRichErrorBoundary onError={handleRichEditorRenderError}>
         <MDXEditor
           ref={setEditorRef}
+          translation={(key, fallback, interpolations = {}) =>
+            key === "contentArea.editableMarkdown" && ariaLabel
+              ? ariaLabel
+              : Object.entries(interpolations).reduce(
+                  (text, [name, value]) => text.replaceAll(`{{${name}}}`, String(value)),
+                  fallback,
+                )
+          }
           markdown={editorValue}
           iconComponentFor={editorIconFor}
           suppressHtmlProcessing
