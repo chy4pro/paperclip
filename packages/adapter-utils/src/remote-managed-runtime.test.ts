@@ -86,20 +86,43 @@ describe("remote managed runtime", () => {
       strictHostKeyChecking: true,
     };
     const remoteHomes: string[] = [];
+    const restoredAssetDirs: string[] = [];
     for (const runId of ["run-a", "run-b"]) {
+      vi.mocked(runSshCommand).mockClear();
       const prepared = await prepareRemoteManagedRuntime({
         spec,
         runId,
         adapterKey: "codex",
         workspaceLocalDir: workspaceDir,
         assetStateKey: "task-issue-1",
-        assets: [{ key: "home", localDir: homeDir }],
+        assets: [{
+          key: "home",
+          localDir: homeDir,
+          replaceEntries: ["auth.json", "config.toml", "skills", "../escape"],
+          restore: async ({ assetDir }) => {
+            restoredAssetDirs.push(assetDir);
+          },
+        }],
       });
       expect(prepared.runtimeRootDir).toBe(`/app/.paperclip-runtime/runs/${runId}/workspace/.paperclip-runtime/codex`);
       expect(prepared.assetDirs.home).toBe("/app/.paperclip-runtime/state/task-issue-1/codex/home");
+      // Host-owned entries are cleared in the retained home before the upload; path-like entries are ignored.
+      const sshCalls = vi.mocked(runSshCommand).mock.calls as unknown as Array<[unknown, string]>;
+      const clearIndex = sshCalls.findIndex(([, command]) => command.includes("rm -rf --"));
+      expect(sshCalls[clearIndex]?.[1]).toBe(
+        "mkdir -p '/app/.paperclip-runtime/state/task-issue-1/codex/home' && cd '/app/.paperclip-runtime/state/task-issue-1/codex/home' && rm -rf -- 'auth.json' 'config.toml' 'skills'",
+      );
+      const clearOrder = vi.mocked(runSshCommand).mock.invocationCallOrder[clearIndex];
+      const syncOrder = vi.mocked(syncDirectoryToSsh).mock.invocationCallOrder.at(-1)!;
+      expect(clearOrder).toBeLessThan(syncOrder);
       const call = vi.mocked(syncDirectoryToSsh).mock.calls.at(-1) as unknown as [{ remoteDir: string }];
       remoteHomes.push(call[0].remoteDir);
+      await prepared.restoreWorkspace();
     }
+    expect(restoredAssetDirs).toEqual([
+      "/app/.paperclip-runtime/state/task-issue-1/codex/home",
+      "/app/.paperclip-runtime/state/task-issue-1/codex/home",
+    ]);
     expect(remoteHomes).toEqual([
       "/app/.paperclip-runtime/state/task-issue-1/codex/home",
       "/app/.paperclip-runtime/state/task-issue-1/codex/home",
