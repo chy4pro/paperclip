@@ -80,6 +80,7 @@ import {
   resolveSharedCodexHomeDir,
   seedManagedCodexHome,
   stageCodexHomeForSync,
+  CODEX_SYNC_ALLOWLIST,
   mergeManagedCodexMcpGateways,
   writeManagedCodexMcpConfig,
   type ManagedCodexMcpGateway,
@@ -843,6 +844,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
                 key: "home",
                 localDir: stagedCodexHomeDir,
                 followSymlinks: true,
+                // With a retained home (ssh assetStateKey) the host-owned files
+                // are replaced on every run; session state stays.
+                replaceEntries: CODEX_SYNC_ALLOWLIST,
                 // Inbound (host→sandbox) auth-merge contribution: stages the two
                 // merge scripts and runs the merge-extract command so a sandbox
                 // that already carries a Codex `auth.json` keeps whichever
