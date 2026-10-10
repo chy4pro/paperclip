@@ -38,6 +38,8 @@ export interface RemoteManagedRuntimeAsset {
   localDir: string;
   followSymlinks?: boolean;
   exclude?: string[];
+  /** See SandboxManagedRuntimeAsset.replaceEntries; applied when `assetStateKey` retains the asset directory. */
+  replaceEntries?: readonly string[];
   restore?: (ctx: SandboxManagedRuntimeAssetRestoreContext) => Promise<void>;
 }
 
@@ -192,6 +194,18 @@ export async function prepareRemoteManagedRuntime(input: {
     for (const asset of input.assets ?? []) {
       const remoteDir = path.posix.join(assetRootDir, asset.key);
       assetDirs[asset.key] = remoteDir;
+      const replaceEntries = (asset.replaceEntries ?? []).filter(
+        (entry) => entry.length > 0 && entry !== "." && entry !== ".." && !entry.includes("/"),
+      );
+      if (assetStateKey && replaceEntries.length > 0) {
+        // The retained directory outlives the run: drop the host-owned entries
+        // first so a credential or config removed on the host is not reused.
+        await runSshCommand(
+          input.spec,
+          `mkdir -p ${shellQuote(remoteDir)} && cd ${shellQuote(remoteDir)} && rm -rf -- ${replaceEntries.map(shellQuote).join(" ")}`,
+          { timeoutMs: 30_000 },
+        );
+      }
       await syncDirectoryToSsh({
         spec: input.spec,
         localDir: asset.localDir,
